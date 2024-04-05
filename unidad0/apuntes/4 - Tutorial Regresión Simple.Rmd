@@ -1,0 +1,250 @@
+---
+title: "Tutorial Regresión Lineal Simple"
+output: html_notebook
+---
+
+## Cómo programar una regresión lineal en R
+
+Existen muchos modelos que podemos programar en R, pero entre ellos el más básico, y uno de los más importantes, es la regresión lineal. Seguro que has oído hablar de ella, pero… ¿conoces exactamente cómo funciona y las presunciones que realiza?
+
+## Entendiendo el funcionamiento de la regresión lineal (con R)
+
+Supongamos que un país no conoce su esperanza de vida y la quiere predecir. Para ello, utilizará el PIB per Cápita ya que, es un valor que sí puede calcular . Además, a primera vista parece que son variables relacionadas: es de suponer que países con mayor PIB per Cápita (más ricos), tendrán mayor esperanza de vida (seguramente derivado de otros factores como la sanidad), por lo que puede ser un buen estimador.
+
+Para este ejemplo, vamos a usar los datos del 2007 de la librería gapminder. Asimismo, en vez de usar el Pib per Cápita, usaré el logaritmo del PIB per Cápita (lo explico más adelante en el post). En cualquier caso, veamos si se da esa relación:
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(gapminder)
+library(dplyr)
+
+gapminder %>% head()
+```
+
+Para este ejemplo, vamos a usar los datos del 2007 de la librería gapminder. Asimismo, en vez de usar el Pib per Cápita, usaremos el logaritmo del PIB per Cápita (se explica más adelante en el post). En cualquier caso, veamos si se da esa relación:
+
+```{r}
+
+data <- gapminder %>%
+  filter(year == 2007) %>% 
+  mutate(loggdpPercap = log(gdpPercap))
+ 
+plot(data$lifeExp ~  data$loggdpPercap)
+```
+
+Efectivamente parece que hay una relación: visualmente vemos cómo podríamos dibujar una línea en la que, nos devuelva el valor de la esperanza de vida para diferentes valores del logaritmo del PIB per Cáptia.
+
+Sin embargo, aunque podamos dibujar muchas líneas, solo hay una que se ajusta a los datos de la mejor manera posible. Y, qué mejor manera de verlo, que creando tres funciones lineales y viendo como no vale cualquier recta:
+
+```{r}
+library(purrr)
+# Creo las funciones
+regres_azul = function(x){67.00742 + x*0}
+regres_rojo = function(x){96.666 - 3.333*x}
+regres_amarillo = function(x){15.833 + 5.833*x}
+
+# Calculo los datos predichos por dichas funciones
+datos_azul = c(5:11) %>% map_dbl(regres_azul)
+datos_amarillo = c(5:11) %>% map_dbl(regres_amarillo)
+datos_rojo = c(5:11) %>% map_dbl(regres_rojo)
+
+# Creo el gráfico
+plot(data$lifeExp ~ data$loggdpPercap)
+lines(c(5:11), datos_azul, type = "l", col = "blue", lty = 2)
+lines(c(5:11), datos_rojo, type = "l", col = "red", lty = 2)
+lines(c(5:11), datos_amarillo, type = "l", col = "yellow3")
+```
+
+Como vemos en el ejemplo, las líneas azul y rojas no parece que serían muy buenas a la hora de predecir la esperanza de vida, mientras que la línea naranja sí que parece sería mejor.
+
+Vemos claro que hay ciertas regresiones que se ajustan más a nuestros datos que otras. De hecho, hay una regresión que se ajusta mejor que cualquier otra regresión que hagamos. Y es que, en la regresión lineal, como en cualquier otro modelo, siempre hay, al menos, un óptimo.
+
+Pero, ¿cómo decide el algoritmo cómo pintar la línea? De hecho, ¿cómo sabemos qué regresión es mejor? Para ello, primero hay que conocer los residuos de nuestra regresión. ¡Vamos a ello!
+
+## Calcular los residuos de la regresión lineal
+
+La forma de saber qué regresión funciona mejor, es calcular cómo de cerca está la regresión de nuestros datos. A esa distancia entre el valor real y el que predice la regresión, se le llama residuo. Como es lógico, cuanto mejor se ajuste la regresión a los datos, menor será la distancia entre el valor predicho y el real. Es decir, que a mejor ajuste del modelo, menor serán los residuos.
+
+Veamos un ejemplo gráfico de a qué me refiero mostrando los residuos de la regresión azul.
+
+```{r}
+library(ggplot2)
+
+data <- data %>% mutate(predicted_azul = loggdpPercap %>% map_dbl(regres_azul))
+
+ggplot(data, aes(loggdpPercap, lifeExp)) +
+  geom_point() + 
+  geom_segment(aes(xend = loggdpPercap, yend = predicted_azul)) +
+  geom_point(aes(y = predicted_azul), shape = 1, col = "blue") +
+  theme_minimal()
+```
+
+Como vemos, la regresión azul tiene unos residuos muy grandes: hay mucha distancia entre los valores predichos (sin relleno negro) y los reales (con relleno negro).
+
+Podríamos hacer lo mismo con la regresión amarilla. Antes hemos visto como, visualmente, se ajustaba mejor a los datos, por lo que es de esperar que los residuos deben ser menores:
+
+```{r}
+data <- data %>% mutate(predicted_amarillo = loggdpPercap %>% map_dbl(regres_amarillo))
+
+ggplot(data, aes(loggdpPercap, lifeExp)) +
+  geom_point() + 
+  geom_segment(aes(xend = loggdpPercap, yend = predicted_amarillo)) +
+  geom_point(aes(y = predicted_amarillo), shape = 1, col = "yellow") +
+  theme_minimal()
+```
+
+Efectivamente, visualmente vemos como los residuos son más bajos. Pero, ¿cómo sabemos esto matemáticamente? Veamos si la suma de errores al cuadrado indica lo que visualmente vemos: que la regresión amarilla ajusta mejor que la regresión azul.
+
+```{r}
+rss = function(real, predicted){
+  sum((real - predicted)^2)
+}
+
+cat(" RSS Azul: ", rss(data$lifeExp, data$predicted_azul), "\n",
+"RSS Amarillo: ", rss(data$lifeExp, data$predicted_amarillo))
+```
+
+¡Efectivamente! La suma de residuos al cuadrado sí sirve para conocer qué modelo ajusta mejor. De hecho, ya sabemos qué es lo que tenemos que buscar: la recta que minimiza la suma de residuos al cuadrado. Pero… ¿cómo la encontramos? Pues… en la realidad hay muchos métodos, pero el más utilizado es el método de Mínimos Cuadrados Ordinarios. ¡Veamos cómo funciona!
+
+## Mínimos Cuadrados Ordinarios (MCO)
+
+El método de Mínimos Cuadrados Ordinales es un método que permite estimar los parámetros de una regresión lineal bajo ciertos supuestos (que veremos más adelante). Si se cumplen esos supuestos, el método de Mínimos Cuadrados Ordinaros proporcionará un estimador insesgado de varianza mínima. Vamos, lo que estamos buscando.
+
+Según este método, dada una regresión $Y_i = \beta_0 + \beta_1 X_i + \epsilon_i$, podemos estimar los parámetros de nuestra regresión de la siguiente manera:
+
+-   Pendiente de la Recta: $\hat{\beta}_1 = \frac{\sum(X_i – \bar{X}) (Y_i – \bar{Y})} {\sum(X_i – \bar{X})^2}$.
+-   Ordenada al origen (o intercept): $\hat{\beta}_0 = \bar{Y} – \hat{\beta}_1 \bar{X}$.
+
+Así pues, vamos a crear una función para estimar los parámetros. Empezamos con la pendiente.
+
+```{r}
+pred_slope = function(x, y){
+  x_mean = mean(x)
+  y_mean = mean(y)
+
+  sum((x - x_mean)*(y - y_mean))/sum((x - x_mean)^2)
+}
+
+pred_intercept = function(x, y, slope){
+  y_mean = mean(y)
+  x_mean = mean(x)
+
+  y_mean - slope*x_mean
+
+}
+
+slope = pred_slope(data$loggdpPercap, data$lifeExp)
+intercept = pred_intercept(data$loggdpPercap, data$lifeExp, slope)
+print(paste(slope,intercept))
+
+regres_lineal = function(x, slope, intercept){
+  intercept + slope*x
+}
+
+data$predicted = data$loggdpPercap %>% map_dbl(regres_lineal, slope, intercept)
+
+ggplot(data, aes(loggdpPercap, lifeExp)) +
+  geom_point() + 
+  geom_segment(aes(xend = loggdpPercap, yend = predicted)) +
+  geom_point(aes(y = predicted), shape = 1, col="green") +
+  theme_minimal()
+
+```
+
+Como vemos, parece que se ajusta mejor a todos los puntos, aunque sigue habiendo unos valores un tanto anómalos sobre los que está un poco lejos.
+
+## Medir la Bondad de Ajuste del modelo de una Regresión Lineal en R
+
+Una vez tenemos el modelo, tenemos que medir cómo de útil es el modelo, ya que de nada nos serviría un modelo que tienen una capacidad predictiva muy baja. Para ello, hay dos métricas principales que se suelen calcular: el error estándar de los residuos y el coeficiente de determinación o $R^2$.
+
+### Error Estándar de los Residuos
+
+El error estándar de los residuos mide la desviación de cualquier punto respecto a la estimación del modelo en ese punto. Calcularlo es muy sencillo, ya que únicamente se debe dividir por los grados de libertad de los residuos, como muestra la siguiente fórmula:
+
+$$RSE = \sqrt{\frac{RSS}{n-p-1}}$$
+
+Nota: p es igual a el número de predictores del modelo. En el caso de un modelo simple, con un predictor.
+
+```{r}
+rse = function(rss, n, p){
+  (rss/ (n-p-1))^(1/2)
+}
+
+model_rss =  rss(data$lifeExp, data$predicted) 
+
+model_rse = rse(model_rss, nrow(data), 1)
+model_rse
+```
+
+### Coeficiente de determinación $R^2$
+
+El coeficiente de determinación nos indica qué proporción de la varianza total de los datos es capaz de explicar nuestro modelo. A diferencia del RSE, el coeficiente de determinación es adimensional, es decir, es un ratio que va del 0 al 1 para todos los modelos. Esto hace que sea muy fácil de interpretar.
+
+La forma de calcular el coeficiente de determinación es muy sencilla e intuitiva: podemos calcular la varianza total y la varianza de los residuos. Si dividimos la varianza de residuos entre la total, tendríamos el porcentaje de varianza no explicado por el modelo. Lo restante hasta 1, sería la varianza sí explicada por el modelo, es decir, le coeficiente de determinación:
+
+$$R^2 = 1-\frac{RSS}{TSS} = 1 – \frac{\sum(\hat{y_i} – y_i)^2}{\sum(y_i – \bar{y}_i)^2}$$
+
+```{r}
+tss = function(y){
+  mean_y = mean(y)
+  sum((y - mean_y)^2)
+}
+
+r_squared = function(y,y_pred){
+  tss_temp = tss(y)
+  rss_temp = rss(y, y_pred)
+  1- (rss_temp/tss_temp)
+
+}
+
+r_squared = r_squared(data$lifeExp, data$predicted)
+r_squared
+```
+
+Como vemos, obtenemos que el modelo es capaz de explicar el 65% de la varianza total, lo cual parece que está bastante bien, teniendo en cuenta lo simple que es el modelo.
+
+## Regresión lineal con lm()
+
+lm() es la función de R para ajustar modelos lineales. De ningún modo es la única, pero es la más importante. Dado que en un modelo lineal las variables no son simétricas usamos una sintaxis especial para introducirlas al modelo, señalando cuál está del lado izquierdo y cuál(es) del lado derecho, es decir, cuál es la dependiente y cuál es la independiente. Esa sintaxis especial se llama notación de fórmula y utiliza el símbolo \~ para separar el lado izquierdo del lado derecho. A la izquierda de \~ se ubica la variable dependiente, a la derecha la(s) independiente(s).
+
+lm() permite ajustar modelos con más de una variable independiente. Del lado derecho unimos predictores con el signo +.
+
+La sintaxis básica es `lm(dependiente~independiente1+independiente2, data=datos)`.
+
+```{r}
+data %>% lm(formula = lifeExp ~ loggdpPercap) %>% summary()
+```
+
+La función summary() nos regresa el sumario del modelo.
+
+La primera línea es Call: y muestra la formula con la que obtuvimos el modelo. Es útil para evitar confusiones, especialmente si estamos comparando varios modelos a la vez. Podemos saber exactamente a qué variables dependientes e independientes corresponde el sumario.
+
+La segunda es Residuals: y nos da 5 estadísticos sobre la distribución de los residuos del modelo: valores mínimos, 1er, 2do y 3er cuartil y valor máximo. La media de los residuos siempre es cero, así que es un parámetro de referencia que no aparece en el sumario, pero que nos resulta útil. Si los residuos se distribuyen conforme a una distribución normal deberíamos esperar que la mediana sea 0 o muy cerca de 0, y que el 1er y 3er cuartil sean simétricos. Lo mismo para lo valores mínimos o máximos. Si hay desviaciones notables de media y mediana y no hay simetría entre cuartiles es muy probable que no estemos cumpliendo con algunos de los supuestos de los modelos lineales.
+
+La tercera es Coefficients: y muestra los coeficientes estimados por el modelo, es decir, los parámetros ocultos β0 y β1 de la ecuación 1. Estas son la ordenada al origen (Intercept) y las pendientes estimadas para cada variable. En este caso tenemos sólo una, pero podríamos incluir más.
+
+En la tercer columna se registra el error estandar para la estimación de cada variable, al que podemos interpretar como el promedio de los residuos. A partir del coeficiente estimado y el error estándar se computa un valor t, un estadístico de la divergencia entre el estimado que produce el modelo y un estimado hipotético con valor 0. Cuanto más alto es el valor t mayor la divergencia entre los coeficientes del modelo y el coeficiente igual a cero. Por último el p-value de la prueba de hipótesis del estadístico t, que indica la probabilidad de obtener un estimado como el que obtuvimos si el coeficiente real fuera 0. Si la probabilidad de este evento es muy baja podemos rechazar la hipótesis de nulidad según la cuál el verdadero estimado es cero. Esto no significa que nuestro modelo sea verdadero, simplemente que es poco verosímil que obtuviéramos estos estimados siendo verdadero que la pendiente es 0. Si el p-value es alto (digamos, mayor que 0.05) no podemos rechazar la hipótesis de nulidad y deberíamos tratar a nuestro estimado como si fuera 0: la pendiente es horizontal, no hay diferencias significativas en los valores de y a medida que varía el valor de x. No se decepcione: los p-values altos son sumamente informativos. En este caso si el p-value fuera mayor que 0.05 obtendría una conclusión valiosa: que la esperanza de vida no está relacionada con el ingreso, al menos para estos datos.
+
+La última línea muestra el error estándar de los residuos y los valores de R2, múltiple y ajustado.
+
+Por último reporta el estadístico F y el p-value correspondiente. El estadístico F considera a la varianza explicada y la no explicada y es la base de una prueba de hipótesis en la que contrasta a nuestro modelo con uno hipotético en el que las variables no tienen efectos, es decir, con todos los coeficientes iguales a 0. En el caso del Modelo 1, que incluye una sola variable predictora, el p-value de t y F es el mismo, en modelo lineales múltiples puede que este no sea el caso. Si el p-value del estadístico F es menor a cierto criterio –usualmente menor que 0.05– podemos rechazar esta hipótesis de nulidad. Sería poco probable que dado un modelo verdadero con coeficientes iguales a cero obtuviéramos un modelo como el nuestro.
+
+Por último, podemos acceder a info del objeto como los coeficientes y los residuos.
+
+```{r}
+lm_object <- data %>% lm(formula = lifeExp ~ loggdpPercap)
+print("Coeficientes")
+lm_object$coefficients
+print("Residuos")
+lm_object$residuals
+```
+
+Una vez que tenemos el modelo podemos utilizarlo para predecir cualquier valor de esperanza de vida, dado el valor del logaritmo del PBI. Usamos la función predict(), que recibe dos argumentos: el modelo que usaremos para la predicción, un objeto de la clase lm u otro tipo de modelo y newdata=, un data.frame que contiene al menos una columna que el mismo nombre y tipo que la variable independiente.
+
+```{r}
+print("Predicción con lm")
+gdp <- 1000
+log_gdp <- log(gdp)
+predict(lm_object,tibble(loggdpPercap = c(log_gdp)))
+print("Predicción con nuestro modelo")
+log_gdp*slope+intercept
+```

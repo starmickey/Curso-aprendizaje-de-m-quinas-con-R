@@ -1,0 +1,356 @@
+---
+title: "Lenguaje de programación R"
+output: html_notebook
+---
+
+## Introducción
+
+R es un entorno y lenguaje de programación con un enfoque al análisis estadístico. Se trata de uno de los lenguajes de programación más utilizados en investigación científica, siendo además muy popular en los campos de aprendizaje automático, minería de datos, investigación biomédica, bioinformática, matemáticas financieras, y más. Se destaca por la posibilidad de cargar diferentes bibliotecas o paquetes con funcionalidades de cálculo y graficación.
+
+R es parte del sistema GNU y se distribuye bajo la licencia GNU GPL. Está disponible para los sistemas operativos Windows, Macintosh, Unix y GNU/Linux. 
+
+## Características del lenguaje
+
+R es un lenguaje interpretado, por lo que los usuarios suelen acceder a través de un intérprete de línea de comandos. Si un usuario escribe 2 + 2 en el símbolo del sistema R y presiona enter, la computadora responde con 4.
+
+```{r}
+2 + 2
+```
+
+Este cálculo se interpreta como la suma de dos vectores de un solo elemento, lo que resulta en un vector de un solo elemento. El prefijo ```[1]``` indica que la lista de elementos que la siguen en la misma línea comienza con el primer elemento del vector, una característica que es útil cuando la salida se extiende sobre varias líneas. Por ejemplo, la salida para la secuencia de números enteros de 1 a 50 es
+
+```{r}
+1:50
+```
+
+## Sintaxis y utilidades básicas
+
+Los siguientes ejemplos ilustran la sintaxis básica del lenguaje. En R, el **operador de asignación** generalmentees una flecha compuesta por ```<-```, aunque también se puede usar ```=``` en su lugar.
+
+```{r}
+a <- 9      # crea un vector 'a' de un solo elemento y le asigna el valor 9
+b <- 12     # crea un vector 'b' de un solo elemento y le asigna el valor 12
+a+b         # muestra el resultado de 'a+b'
+print(a+b)  # imprime el resultado de 'a+b'
+class(a)    # muestra el tipo de dato del objeto 'a'
+c <- "AM"   # crea un vector 'c' de un solo elemento y le asigna la cadena "AM"
+c           # muestra el contenido de 'c'
+class(c)    # muestra el tipo de dato del objeto 'c'
+x <- 5:10   # Crea un vector con una secuencia de números de 5 a 10
+print(x)
+y <- x^2    # Crea un vector a partir de una fórmula o expresión
+print(y)  
+plot(y)     # Grafica el vector 'y', con el índice del vector en el eje X y su valor en el eje Y
+mean(y)     # Media aritmética del vector 'y'
+var(y)      # Varianza del vector 'y'
+z <- (x+y)  # Suma dos vectores
+print(z)
+v <- c(2,4,6,8,10)  # Crea un vector con una lista de números específica
+print(v)
+class(v)
+A <- matrix(1:9, nrow = 3, ncol = 3)    # Crea una matriz de 3x3 
+print(A)
+class(A)
+B <- matrix(1:6, nrow = 3, ncol = 2)    # Crea una matriz de 3x2
+print(B)
+C <- matrix(9:17, nrow = 3, ncol = 3)   # Crea una matriz de 3x3
+print(C)
+print(A+C)    # Muestra la suma de dos matrices
+```
+
+Más info sobre operadores en matrices: https://www.statmethods.net/advstats/matrix.html y https://www.datamentor.io/r-programming/matrix/.
+
+## Listas
+
+¿Qué es una lista en R? Una lista es una colección ordenada de cualquier objeto de R. A diferencia de los vectores y las matrices, donde los elementos deben ser del mismo tipo, en el caso de las listas los elementos pueden ser de un tipo diferente o almacenar distintas estructuras.
+
+Si no sabes cómo crear una lista en R, solo necesitas usar la función list, especificando los objetos que deseas unir dentro de tu lista.
+
+```{r}
+x <- c(45, 12, 56, 14, 16)
+y <- c("Coche", "Bicicleta")
+z <- matrix(1:12, ncol = 4)
+
+# Creando una lista
+mi_lista <- list(x, y, z)
+mi_lista
+```
+Como en otras estructuras de datos de R, puedes nombrar los elementos para identificar o tener un acceso más fácil a los objetos utilizando el signo $.
+
+```{r}
+mi_lista_nombres <- list(A = x, B = y, C = z)
+mi_lista_nombres
+```
+
+Ahora, vamos a indexar los elementos de la lista para acceder a los datos que queramos. Para ello, puedes extraer los elementos de la lista con corchetes simples o dobles.
+
+```{r}
+# Primer elemento de la lista
+mi_lista[1]
+
+# Primer elemento de la lista, simplificando la salida
+mi_lista[[1]]
+
+# Primer elemento del primer elemento de la lista.
+mi_lista[[1]][1]
+unlist(mi_lista[1])[1] # Equivalente
+
+# Primera columna del tercer elemento
+mi_lista[[3]][, 1]
+
+# Segundo elemento de la primera columna
+# del tercer elemento de la lista
+mi_lista[[3]][, 1][2]
+mi_lista[[3]][2, 1] # Equivalente
+```
+
+Sin embargo, en caso de que hayas nombrado los elementos de tu lista, puedes usar la forma anterior para obtener los valores, especificar los nombres de los elementos de la lista a los que deseas acceder, o usar el operador $, tal y como se muestra en los siguientes ejemplos:
+
+```{r}
+# Primer elemento de la lista
+mi_lista_nombres["A"]
+
+# Primer elemento de la lista, simplificando la salida
+mi_lista_nombres[["A"]]
+
+# Primer elemento de la lista, simplificando la salida
+mi_lista_nombres$A
+
+# Primer componente del primer elemento de la lista
+mi_lista_nombres$A[1]
+unlist(mi_lista_nombres[1])[1]
+
+# Primera columna del tercer elemento
+mi_lista_nombres$C[, 1]
+mi_lista_nombres$`C`[, 1] # Equivalente
+
+# Segundo elemento de la primera columna
+# del tercer elemento de la lista
+mi_lista_nombres$C[, 1][2]
+mi_lista_nombres$C[2, 1] # Equivalente
+```
+
+Si utilizas corchetes dobles en lugar de corchetes simples para obtener subconjuntos de una lista, la clase de la salida se simplificará tanto como sea posible.
+
+La longitud de una lista es el número de objetos dentro de la lista. Puedes obtener el número de elementos de la lista con la función length. Si quieres conocer la longitud de cualquier objeto dentro de la lista, primero deberás extraer el elemento correspondiente.
+
+```{r}
+# Número de elementos de la lista
+length(mi_lista) # 3
+
+# Número de elementos del primer objeto
+length(mi_lista[[2]]) # 5
+```
+
+Si necesitas agregar un elemento a una lista, puedes especificar el objeto que deseas agregar en el siguiente índice a longitud de la lista. Es decir, si la longitud de la lista es 3, puede agregar el nuevo objeto en el cuarto índice.
+
+```{r}
+mi_lista[[4]] <- data.frame(X = c(8, 5, 3), Y = c(7, 9, 1))
+
+# Equivalente, para el caso general de n elementos
+mi_lista[[length(mi_lista) + 1]] <- data.frame(X = c(8, 5, 3), Y = c(7, 9, 1)) 
+
+mi_lista
+```
+
+Para eliminar algunos elementos de una lista puedes asignar el índice del elemento de la lista que quieres eliminar como NULL o indicar entre corchetes el índice con el operador -. Si deseas eliminar varios elementos a la vez, puedes combinarlos con la función c.
+
+```{r}
+mi_lista[[2]] <- NULL
+mi_lista[-2] # Equivalente
+
+# Eliminando el primer y segundo elemento a la vez
+mi_lista[-c(1, 2)] 
+```
+
+También puedes anidar listas en R. Esto significa que en todos o algunos elementos de tu lista raíz tendrás una lista. Esa lista también puede almacenar otras listas u otros tipos de objetos. Puedes lograr esto con la función list, agregando listas en los elementos. En este ejemplo, vamos añadir a una lista las dos listas creadas en las secciones anteriores.
+
+```{r}
+list_de_listas <- list(mi_lista, mi_lista_nombres)
+list_de_listas
+```
+
+Acceder a elementos de listas dentro de listas es similar a acceder a los elementos a una única lista. De hecho, si accedes a una lista y la almacenas dentro de un objeto, el proceso es el mismo que se presenta en la sección de extracción de elementos de una única lista. De lo contrario, deberás conocer y seguir el nivel de jerarquía de la lista. Tienes algunos ejemplos en el siguiente bloque de código:
+
+```{r}
+# Accediendo a la primera lista
+list_de_listas[[1]]
+
+# Accediendo a la segunda lista
+list_de_listas[[2]]
+
+# Primer objeto de la segunda lista
+list_de_listas[[2]][[1]] # 45 12 56 14 16
+
+# Tercer elemento del primer objeto
+# de la segunda lista
+list_de_listas[[2]][[1]][3] # 56
+list_de_listas[[2]]$A[3]    # Equivalente
+
+# Puedes guardar las listas en objetos
+# y acceder a los elementos de esa lista
+# como explicamos en la sección correspondiente
+lista_1 <- list_de_listas[[1]]
+
+# Este sería el primer objeto
+# de la primera lista
+lista_1[[1]] 
+```
+
+Puedes juntar o unir dos o más listas listas en R. Para ello, puede usar las funciones append, c o do.call. Al combinar las listas de esta manera, los elementos de la segunda lista se agregarán al final de la primera lista.
+
+```{r}
+# Datos originales
+mi_lista <- list(x, y, z)
+mi_lista_nombres <- list(A = x, B = y, C = z)
+
+# Concatenar listas
+append(mi_lista, mi_lista_nombres)
+c(mi_lista, mi_lista_nombres) # Equivalente
+do.call(c, list(mi_lista, mi_lista_nombres)) # Equivalente
+```
+
+En ocasiones se necesita convertir una lista a otros tipos de objetos. La conversión más común es convertir una lista en vector. Para ello puedes utilizar la función unlist.
+
+```{r}
+# Primer elemento de la lista a vector
+unlist(mi_lista[[1]], use.names = FALSE)
+```
+
+Si prefieres convertir la lista completa a vector, establece el argumento use.names como FALSE.
+
+```{r}
+# Lista completa como vector
+unlist(mi_lista, use.names = FALSE)
+```
+
+
+
+
+## Estructuras de control en R
+
+Para controlar la ejecución del flujo de ejecución en R hacemos uso de las estructuras de control. Existen diferentes tipos de estructuras de control.
+
+### if-else
+El código dentro del bloque ```if``` se ejecuta solo si la condición es VERDADERA, sino se ejecuta el bloque ```else```.
+
+```
+if (test_expression) {
+    statement if
+} else {
+    statement else
+}
+```
+
+```{r}
+values <- 1:10                                        
+temp <- sample(values, 1)
+if (temp <= 5) {                               
+  print(paste(temp, "es menor igual a 5"))
+} else {
+  print(paste(temp, "es mayor a 5"))
+}
+```
+
+### for, while, repeat loops
+
+Un bucle es una secuencia de instrucciones que se repite hasta que se alcanza una determinada condición. ```for```, ```while``` y ```repeat```, con las cláusulas adicionales ```break``` y ```next``` se usan para construir bucles.
+
+```{r}
+## FOR
+for (i in values) {
+    print(i)
+}
+
+## WHILE
+i <- 1
+while (i <= 10) {
+    print(i)
+    i <- i + 1
+}
+
+## REPEAT - BREAK
+thresh <- 2
+repeat {
+    val <- sample(values,1)
+    exp <- sample(values,1)
+    if ( abs(val - exp) <= thresh ) {
+        print(paste("El valor absoluto de", val, "-", exp, "es menor igual a", thresh, ":: EXIT"))
+        break
+    } else {
+        print(paste("El valor absoluto de", val, "-", exp, "es mayor a", thresh))
+    }
+}
+
+## NEXT
+x = 1:5
+for (i in x) {
+  if (i == 2) {
+    next
+  }
+  print(i)
+}
+```
+
+### Nested loops
+
+```{r}
+mat <- matrix(1:10, 2)
+print(mat)
+for (id1 in 1:nrow(mat)) {
+  for (id2 in 1:ncol(mat)) {
+    print(paste("Elemento [",id1,",",id2,"]:", mat[id1, id2]))
+  }
+}
+```
+
+Más información y ejemplos sobre las estructuras de control en https://bookdown.org/rdpeng/rprogdatascience/control-structures.html.
+
+## Estructura de una función
+
+Una de las fortalezas de R es la facilidad de crear nuevas funciones. Los objetos en el cuerpo de la función permanecen locales a la función y se puede devolver cualquier tipo de datos. Aquí hay un ejemplo de una función creada por el usuario:
+
+```{r}
+# Declara una función 'cl' con parámetros 'x' e 'y' que devuelve una combinación lineal de 'x' e 'y'
+cl <- function(x, y) {
+  z <- 3 * x + 4 * y
+  return(z)
+}
+```
+
+Ahora podemos llamar a la función con diferentes párametros:
+
+```{r}
+cl(1, 2)
+cl(c(1,2,3), c(5,3,4))
+cl(1:3, 4)
+```
+
+## Funciones útiles de R
+
+#### ¿Dónde estoy parado? (en qué directorio)
+```{r}
+print(getwd())
+```
+
+#### Variables en memoria
+```{r}
+print(ls())
+```
+
+#### Cargar un archivo o dataset a memoria y mostrar un resumen estadístico
+```{r}
+dataset <- read.csv("../data/iris.data")
+summary(dataset)
+```
+
+#### Visualizar las primeras líneas del dataset
+```{r}
+head(dataset)
+```
+
+#### ¿Cuántas filas y cuántas columnas tiene?
+```{r}
+nrow(dataset)
+ncol(dataset)
+```

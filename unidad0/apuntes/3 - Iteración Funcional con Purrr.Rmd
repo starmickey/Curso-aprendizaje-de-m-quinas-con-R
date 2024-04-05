@@ -1,0 +1,219 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Aprendiendo purrr
+
+Purrr es la respuesta de tidyverse para aplicar funciones para la iteración. Es uno de esos paquetes de los que quizás hayas oído hablar, pero que parecía demasiado complicado para sentarte y aprender. 
+
+En esencia, purrr tiene que ver con la iteración. Purrr introduce las funciones map (la respuesta de tidyverse a las funciones de aplicación de R base, pero más en línea con las prácticas de programación funcional), así como algunas funciones nuevas para manipular listas. 
+
+## Funciones map
+
+Una función map es aquella que aplica la misma acción/función a cada elemento de un objeto (por ejemplo, cada entrada de una lista o un vector, o cada una de las columnas de un dataframe).
+
+Si está familiarizado con las funciones básicas de R apply(), entonces resulta que ya está familiarizado con las funciones de mapa, ¡incluso si no lo sabía!
+
+Las funciones apply() son un conjunto de funciones base-R muy útiles para realizar de forma iterativa una acción en las entradas de un vector o lista sin tener que escribir un bucle for. Si bien no hay nada fundamentalmente malo con las funciones de aplicación de R base, la sintaxis es algo inconsistente entre las diferentes funciones de aplicación, y el tipo esperado del objeto que devuelven es a menudo ambiguo (al menos lo es para sapply...).
+
+La convención de nomenclatura de las funciones de mapa es tal que el tipo de salida se especifica mediante el término que sigue al guión bajo en el nombre de la función.
+
+     map(.x, .f) es la función de mapeo principal y devuelve una lista
+
+     map_df(.x, .f) devuelve un dataframe
+
+     map_dbl(.x, .f) devuelve un vector numérico (doble)
+
+     map_chr(.x, .f) devuelve un vector de caracteres
+
+     map_lgl(.x, .f) devuelve un vector lógico
+     
+De manera consistente con la forma del tidyverse, el primer argumento de cada función map es siempre el objeto de datos que desea mapear, y el segundo argumento es siempre la función que desea aplicar iterativamente a cada elemento del objeto de entrada.
+
+El objeto de entrada a cualquier función map es siempre
+
+     un vector (de cualquier tipo), en cuyo caso la iteración se realiza sobre las entradas del vector,
+
+     una lista, en cuyo caso la iteración se realiza sobre los elementos de la lista,
+
+     un dataframe, en cuyo caso la iteración se realiza sobre las columnas (dado que un dataframe es un tipo especial de lista, es técnicamente lo mismo que el punto anterior).
+     
+Dado que el primer argumento son siempre los datos, esto significa que las funciones map funcionan bien con los pipes (%>%).
+
+A lo largo de esta publicación, demostraremos cada una de las funcionalidades de purrr usando un ejemplo numérico simple (para explicar el concepto) y los datos de gapminder (para mostrar un ejemplo más complejo).
+
+## Uso más simple: loops con map
+
+Básicamente, las funciones map son para iteración. En el siguiente ejemplo, iteraremos a través del vector c(1, 4, 7) sumando 10 a cada entrada. Esta función aplicada a un único número, al que llamaremos .x, se puede definir como:
+
+```{r}
+addTen <- function(.x) {
+  return(.x + 10)
+}
+```
+
+La siguiente función map() itera addTen() en todas las entradas del vector, .x = c(1, 4, 7), y devuelve la salida como una lista.
+
+```{r}
+library(tidyverse)
+map(.x = c(1, 4, 7), 
+    .f = addTen)
+```
+
+Afortunadamente, no es necesario especificar los nombres de los argumentos.
+
+```{r}
+map(c(1, 4, 7), addTen)
+```
+
+Tenga en cuenta que
+
+     el primer elemento de la salida es el resultado de aplicar la función al primer elemento de la entrada (1),
+
+     el segundo elemento de la salida es el resultado de aplicar la función al segundo elemento de la entrada (4),
+
+     y el tercer elemento de la salida es el resultado de aplicar la función al tercer elemento de la entrada (7).
+
+Los siguientes fragmentos de código muestran que no importa si el objeto de entrada es un vector, una lista o un marco de datos, map() siempre devuelve una lista.
+
+```{r}
+map(list(1, 4, 7), addTen)
+```
+```{r}
+map(data.frame(a = 1, b = 4, c = 7), addTen)
+```
+Si queremos que la salida del map sea algún otro tipo de objeto, necesitamos usar una función diferente. Por ejemplo, para asignar la entrada a un vector numérico (doble), puede utilizar la función map_dbl() (“asignar a un doble”).
+
+```{r}
+map_dbl(c(1, 4, 7), addTen)
+```
+```{r}
+map_chr(c(1, 4, 7), addTen)
+```
+Si desea devolver un dataframe, deberá utilizar la función map_df(). Sin embargo, debe asegurarse de que en cada iteración devuelva dataframe que tenga nombres de columna consistentes. map_df vinculará automáticamente las filas de cada iteración.
+
+Para este ejemplo, queremos devolver un dataframe cuyas columnas correspondan al número original y al número más diez.
+
+```{r}
+map_df(c(1, 4, 7), function(.x) {
+  return(data.frame(old_number = .x, 
+                    new_number = addTen(.x)))
+})
+```
+
+Tenga en cuenta que en este caso, definimos una función "anónima" como nuestra salida para cada iteración. Una función anónima es una función temporal (que usted define como el argumento de la función para el mapa). Aquí usé el nombre del argumento .x, pero podría haber usado cualquier cosa.
+
+Otra función a tener en cuenta es modify(), que es como las funciones de map, pero siempre devuelve un objeto del mismo tipo que el objeto de entrada.
+
+```{r}
+library(tidyverse)
+modify(c(1, 4, 7), addTen)
+```
+
+```{r}
+modify(list(1, 4, 7), addTen)
+```
+
+```{r}
+modify(data.frame(1, 4, 7), addTen)
+```
+
+modify también tiene un hermano bastante útil, modify_if(), que sólo aplica la función a elementos que satisfacen un criterio específico (especificado por una “función de predicado”, el segundo argumento llamado .p). Por ejemplo, el siguiente ejemplo solo modifica la tercera entrada ya que es mayor que 5.
+
+```{r}
+modify_if(.x = list(1, 4, 7), 
+          .p = function(x) x > 5,
+          .f = addTen)
+```
+
+## La abreviatura de tilde y punto para funciones
+
+Para hacer que el código sea más conciso, puede utilizar la abreviatura de tilde y punto para funciones anónimas (las funciones que crea como argumentos de otras funciones). 
+
+```{r}
+#La notación funciona reemplazando
+function(x) {
+  x + 10
+}
+#por
+~{.x + 10}
+```
+
+~ indica que ha iniciado una función anónima y se puede hacer referencia al argumento de la función anónima usando .x (o simplemente .). A diferencia de los argumentos de función normales que pueden ser cualquier cosa que desee, el argumento de la función de punto y tilde siempre es .x.
+
+Por lo tanto, en lugar de definir la función addTen() por separado, podríamos usar la abreviatura de tilde y punto.
+
+```{r}
+map_dbl(c(1, 4, 7), ~{.x + 10})
+```
+
+## Map con múltiples objetos de entrada.
+Después de obtener una comprensión básica de las funciones map de Purrr, puedes comenzar a hacer algunas cosas más sofisticadas. Por ejemplo, ¿qué sucede si desea realizar un mapa que itera a través de dos objetos? El siguiente código utiliza funciones map para crear una lista de gráficos que comparan la esperanza de vida y el PIB per cápita para cada combinación de continente/año.
+
+La función de mapa que asigna dos objetos en lugar de 1 se llama map2(). Los primeros dos argumentos son los dos objetos sobre los que desea iterar y el tercero es la función (con dos argumentos, uno para cada objeto).
+
+```{r}
+map2(.x = object1, # the first object to iterate over
+     .y = object2, # the second object to iterate over
+     .f = plotFunction(.x, .y))
+```
+
+Primero, debe definir un vector (o lista) de continentes y un vector (o lista) pareado de años que desea recorrer. Tenga en cuenta que en nuestro ejemplo de continente/año
+
+     la primera iteración corresponderá al primer continente en el vector continente y al primer año en el vector año,
+
+     la segunda iteración corresponderá al segundo continente en el vector continente y al segundo año en el vector año.
+
+Esto puede parecer obvio, pero es un instinto natural asumir incorrectamente que map2() realizará automáticamente la acción en todas las combinaciones que se puedan hacer a partir de los dos vectores. Por ejemplo, si tiene un vector de continente .x = c("Américas", "Asia") y un vector de año .y = c(1952, 2007), entonces podría suponer que map2 iterará sobre las Américas para 1952 y para 2007, y luego Asia en 1952 y 2007. Aunque no será así. En realidad, la iteración será primero América sólo para 1952 y luego Asia sólo para 2007.
+
+Primero, obtengamos nuestros vectores de continentes y años, comenzando por obtener todas las combinaciones distintas de continentes y años que aparecen en los datos.
+
+```{r}
+library(gapminder)
+continent_year <- gapminder %>% distinct(continent, year)
+continent_year
+```
+
+Luego extrayendo los pares de continente y año como vectores separados
+
+```{r}
+# extract the continent and year pairs as separate vectors
+continents <- continent_year %>% pull(continent) %>% as.character
+years <- continent_year %>% pull(year)
+```
+
+Si desea utilizar la abreviatura de tilde y punto, los argumentos anónimos serán .x para el primer objeto sobre el que se itera y .y para el segundo objeto sobre el que se itera.
+
+Antes de pasar directamente a la función map, es una buena idea averiguar cuál será el código para la primera iteración (el primer continente y el primer año, que resultó ser Asia en 1952).
+
+```{r}
+# try to figure out the code for the first example
+.x <- continents[1]
+.y <- years[1]
+# make a scatterplot of GDP vs life expectancy in all Asian countries for 1952
+gapminder %>% 
+  filter(continent == .x,
+         year == .y) %>%
+  ggplot() +
+  geom_point(aes(x = gdpPercap, y = lifeExp)) +
+  ggtitle(glue::glue(.x, " ", .y))
+```
+
+Esto parece haber funcionado. Entonces puedes copiar y pegar el código en la función map2.
+
+```{r}
+map2(.x = continents, 
+                  .y = years, 
+                  .f = ~{
+                    gapminder %>% 
+                      filter(continent == .x,
+                             year == .y) %>%
+                      ggplot() +
+                      geom_point(aes(x = gdpPercap, y = lifeExp)) +
+                      ggtitle(glue::glue(.x, " ", .y))
+                  })
+```
+
+De la misma manera, pmap() nos permite iterar sobre un número arbitrario de objetos (es decir, más de dos).
+

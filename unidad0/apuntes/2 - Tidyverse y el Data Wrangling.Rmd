@@ -1,0 +1,420 @@
+---
+title: "Tidyverse y el Data Wrangling"
+output: html_notebook
+---
+
+
+# Introducción
+
+En este notebook, aprenderás cómo “domar” datos (data wrangling, en inglés): el arte de tener tus datos en R de una forma conveniente para su visualización y modelado. Si bien en español también se suele hacer referencia a esta etapa como manejo o manipulación de datos, hemos mantenido la traducción literal ya que, como se señala en la introducción, la noción de domar (wrangling) apunta a lo difícil que puede ser a veces este proceso.
+
+## Tibbles
+
+A lo largo de este libro trabajaremos con “ **tibbles** ” en lugar de los tradicionales data.frame de R. Los tibbles son data frames, pero modifican algunas características antiguas para hacernos la vida más fácil. R es un lenguaje viejo y algunas cosas que eran útiles hace 10 o 20 años actualmente pueden resultar inconvenientes. Es difícil modificar R base sin romper código existente, así que la mayor parte de la innovación ocurre a través de paquetes. Aquí describiremos el paquete *tibble*, que provee una versión de data frame que facilita el trabajo con el tidyverse. La mayoría de las veces usaremos el término tibble y data frame de manera indistinta; cuando queramos referirnos de manera particular al data frame que viene incluido en R lo llamaremos **data.frame**.
+
+Para trabajar con tibbles debemos importar la librería tidyverse.
+
+```{r}
+install.packages("tidyverse")
+library(tidyverse)
+library(datasets)
+```
+
+Todas de las funciones incluídas en el paquete tidyverse usan tibbles, ya que son una de sus características trasversales. Sin embargo, la mayoría de los paquetes de R suelen usar data frames clásicos, así que algo que podrías querer hacer es convertir un data frame en un tibble. Esto lo puedes hacer con **as_tibble()**
+
+```{r}
+as_tibble(iris)
+```
+
+Puedes crear un nuevo tibble a partir de vectores individuales con tibble(). Esta función recicla vectores de longitud 1 automáticamente y te permite usar variables creadas dentro de la propia función, como se muestra abajo.
+
+```{r Creación con tibble}
+tibble(w = 1, x = 1:5, y = c(1,2,1,2,1), z = x^2 + w)
+```
+
+Otra forma de crear un tibble es con tribble(), que es una abreviación de tibble transpuesto. Esta función está pensada para realizar la entrada de datos en el código: los nombres de las columnas se definen con fórmulas (esto es, comienzan con \~) y cada entrada está separada por comas. Esto permite escribir pocos datos de manera legible.
+
+```{r}
+tribble(
+  ~x, ~y, ~z,
+  #--|--|----
+  "a", 2, 3.6,
+  "b", 1, 8.5
+)
+```
+
+##Leer archivos de disco (readr)
+
+En esta sección aprenderás cómo cargar archivos planos en R con readr, uno de los paquetes principales de tidyverse. La mayoría de las funciones de readr se enfocan en transformar archivos planos en data frames:
+
+-   **read_csv()** lee archivos delimitados por coma
+-   **read_csv2()** lee archivos separados por punto y coma (comunes en países donde ‘,’ es utilizada para separar decimales)
+-   **read_tsv()** lee archivos delimitados por tabulaciones
+-   **read_delim()** archivos con cualquier delimitador.
+
+Todas estas funciones tienen sintaxis similares, por lo que una vez que dominas una, puedes utilizar todas las demás con facilidad por lo que en el resto de la sección nos enfocaremos en read_csv().
+
+```{r}
+data <- read_csv("fifa.csv")
+```
+
+Cuando ejecutas read_csv(), la función devuelve el nombre y tipo de datos con que se importó cada columna.
+
+Puedes también definir un archivo CSV “en línea” (inline). Esto es útil para experimentar con readr y para crear ejemplos reproducibles para ser compartidos.
+
+```{r}
+read_csv("a,b,c
+1,2,3
+4,5,6")
+```
+
+En ambos casos read_csv() emplea la primera línea de los datos para los nombres de columna, lo que es una convención muy común. Hay dos casos en los que podrías querer ajustar este comportamiento:
+
+1.  A veces hay unas pocas líneas de metadatos al comienzo del archivo. Puedes usar *skip = n* para omitir las primeras n líneas, o bien, o usar *comment = "\#"* para quitar todas las líneas que comienzan con, por ejemplo, #.
+
+```{r}
+read_csv("La primera línea de metadata 
+  La segunda línea de metadata
+  x,y,z
+  1,2,3", skip = 2)
+
+read_csv("# Un comentario que quiero ignorar
+  x,y,z
+  1,2,3", comment = "#")
+```
+
+2.  Los datos pueden no tener nombres de columna. En ese caso, puedes utilizar *col_names = FALSE* para decirle a read_csv() que no trate la primera fila como encabezados y que, en lugar de eso, los etiquete secuencialmente desde X1 a Xn. Alternativamente puedes utilizar col_names con el vector de caracteres que será utilizado como nombres de columna.
+
+```{r}
+read_csv("1,2,3\n4,5,6", col_names = FALSE)
+read_csv("1,2,3\n4,5,6", col_names = c("x", "y", "z"))
+```
+
+Otra opción que comúnmente necesita ajustes es na (del inglés, “not available”): Esto especifica el valor (o valores) que se utilizan para representar los valores faltantes en tu archivo.
+
+```{r}
+read_csv("a,b,c\n1,2,.", na = ".")
+```
+
+## Transformación de Datos con dplyr
+
+En esta sección, aprenderás las cinco funciones clave de dplyr que te permiten resolver la gran mayoría de tus desafíos de manipulación de datos:
+
+-   Filtrar o elegir las observaciones por sus valores (*filter()* — del inglés filtrar).
+-   Reordenar las filas (*arrange()* — del inglés organizar).
+-   Seleccionar las variables por sus nombres (*select()* — del inglés seleccionar).
+-   Crear nuevas variables con transformaciones de variables existentes (*mutate()* — del inglés mutar o transformar).
+-   Contraer muchos valores en un solo resumen (*summarise()* — del inglés resumir).
+
+Todas estas funciones se pueden usar junto con group_by() (del inglés agrupar por), que cambia el alcance de cada función para que actúe ya no sobre todo el conjunto de datos sino de grupo en grupo. Estas seis funciones proporcionan los verbos para este lenguaje de manipulación de datos.
+
+### Filtrar Filas con *filter()*
+
+```{r}
+#install.packages("nycflights13")
+library(nycflights13)
+filter(flights, month == 1, day == 1)
+flights
+```
+
+Cuando ejecutas esa línea de código, dplyr ejecuta la operación de filtrado y devuelve un nuevo data frame. Las funciones de dplyr nunca modifican su input, por lo que si deseas guardar el resultado, necesitarás usar el operador de asignación, \<-
+
+```{r}
+ene1 <- filter(flights, month == 1, day == 1)
+```
+
+R imprime los resultados o los guarda en una variable. Si deseas hacer ambas cosas puedes escribir toda la línea entre paréntesis:
+
+```{r}
+(ene1 <- filter(flights, month == 1, day == 1))
+```
+
+Si tienes múltiples argumentos para filter() estos se combinan con “y”: cada expresión debe ser verdadera para que una fila se incluya en el output. Para otros tipos de combinaciones necesitarás usar operadores Booleanos: & es “y”, \| es “o”, y ! es “no”.
+
+El siguiente código sirve para encontrar todos los vuelos que partieron en noviembre o diciembre:
+
+```{r}
+filter(flights, month == 11 | month == 12)
+filter(flights, month %in% c(11, 12))
+```
+
+Por último, filter() solo incluye filas donde la condición es TRUE; excluye tanto los valores FALSE como NA. Si deseas conservar valores perdidos, solicítalos explícitamente:
+
+```{r}
+df <- tibble(x = c(1, NA, 3))
+filter(df, x > 1)
+filter(df, is.na(x) | x > 1)
+```
+
+### Reordenar las filas con *arrange()*
+
+arrange() funciona de manera similar a filter() excepto que en lugar de seleccionar filas, cambia su orden. La función toma un data frame y un conjunto de nombres de columnas (o expresiones más complicadas) para ordenar según ellas. Si proporcionas más de un nombre de columna, cada columna adicional se utilizará para romper empates en los valores de las columnas anteriores:
+
+```{r}
+arrange(flights, year, month, day)
+```
+
+Usa desc() para reordenar por una columna en orden descendente:
+
+```{r}
+arrange(flights, desc(dep_delay))
+```
+
+Los valores faltantes siempre se ordenan al final:
+
+```{r}
+df <- tibble(x = c(5, 2, NA))
+arrange(df, x)
+arrange(df, desc(x))
+```
+
+### Seleccionar columnas con select()
+
+No es raro obtener datasets con cientos o incluso miles de variables. En este caso, el primer desafío a menudo se reduce a las variables que realmente te interesan. select() te permite seleccionar rápidamente un subconjunto útil utilizando operaciones basadas en los nombres de las variables.
+
+```{r}
+# Seleccionar columnas por nombre
+select(flights, year, month, day)
+
+# Seleccionar todas las columnas entre anio y dia (incluyente)
+select(flights, year:day)
+
+# Seleccionar todas las columnas excepto aquellas entre anio en dia (incluyente)
+select(flights, -(year:day))
+```
+
+Hay una serie de funciones auxiliares que puedes usar dentro de select():
+
+-   starts_with("abc"): coincide con los nombres que comienzan con “abc”.
+-   ends_with("xyz"): coincide con los nombres que terminan con “xyz”.
+-   contains("ijk"): coincide con los nombres que contienen “ijk”.
+-   matches("[0-9]"): selecciona variables que coinciden con una expresión regular.
+-   num_range("x", 1:3): coincide con x1,x2 y x3.
+
+Otra opción es usar select() junto con el auxiliar everything() (todo, en inglés). Esto es útil si tienes un grupo de variables que te gustaría mover al comienzo del data frame.
+
+```{r}
+select(flights, dep_delay, everything())
+```
+
+### Añadir nuevas columnas con mutate()
+
+Además de seleccionar conjuntos de columnas existentes, a menudo es útil crear nuevas columnas en función de columnas existentes. Ese es el trabajo de mutate() (del inglés mutar o transformar).
+
+mutate() siempre agrega nuevas columnas al final de un conjunto de datos, así que comenzaremos creando un conjunto de datos más pequeño para que podamos ver las nuevas variables.
+
+```{r}
+flights_sml <- select(flights, 
+  year:day, 
+  ends_with("delay"), 
+  distance, 
+  air_time
+)
+
+mutate(flights_sml,
+  gain = dep_delay - arr_delay,
+  hours = air_time / 60,
+  gain_per_hour = gain / hours
+)
+
+```
+
+Si solo quieres conservar las nuevas variables, usa transmute():
+
+```{r}
+transmute(flights,
+  gain = dep_delay - arr_delay,
+  hours = air_time / 60,
+  gain_per_hour = gain / hours
+)
+```
+
+Hay muchas funciones para crear nuevas variables que puedes usar con mutate(). La propiedad clave es que la función debe ser vectorizada: debe tomar un vector de valores como input, y devolver un vector con el mismo número de valores como output.
+
+```{r}
+transmute(flights,
+  dep_time,
+  hour = dep_time %/% 100,
+  minute = dep_time %% 100
+)
+```
+
+Rezagos: lead() y lag() te permiten referirte a un valor adelante o un valor atrás (con rezago). Esto te permite calcular as diferencias entre valores consecutivos (por ejemplo, x - lag(x)) o encontrar cuándo cambian los valores (x! = lag (x)).
+
+```{r}
+(x <- 1:10)
+lag(x)
+lead(x)
+ x - lag(x)
+ x!= lag (x)
+```
+
+### Resúmenes agrupados con *summarise()*
+
+El último verbo clave es summarise() (resumir, en inglés). Se encarga de colapsar un data frame en una sola fila:
+
+```{r}
+summarise(flights, delay = mean(dep_delay, na.rm = TRUE))
+```
+
+summarise() no es muy útil a menos que lo enlacemos con *group_by()*. Esto cambia la unidad de análisis del conjunto de datos completo a grupos individuales. Luego, cuando uses los verbos dplyr en un data frame agrupado, estos se aplicarán automáticamente “por grupo”. Por ejemplo, si aplicamos exactamente el mismo código a un data frame agrupado por fecha, obtenemos el retraso promedio por fecha:
+
+```{r}
+by_day <- group_by(flights, year, month, day)
+summarise(by_day, delay = mean(dep_delay, na.rm = TRUE))
+```
+
+Cuando agrupas por múltiples variables, cada resumen se desprende de un nivel de la agrupación. Eso hace que sea más fácil acumular progresivamente en un conjunto de datos:
+
+```{r results='hold'}
+daily <- group_by(flights, year, month, day)
+(per_day   <- summarise(daily, flights = n()))
+(per_month <- summarise(per_day, flights = sum(flights)))
+(per_year  <- summarise(per_month, flights = sum(flights)))
+```
+
+Ten cuidado al acumular resúmenes progresivamente: está bien para las sumas y los recuentos, pero debes pensar en la ponderación de las medias y las varianzas, además de que no es posible hacerlo exactamente para estadísticas basadas en rangos como la mediana. En otras palabras, la suma de las sumas agrupadas es la suma total, pero la mediana de las medianas agrupadas no es la mediana general.
+
+### Combinación de múltiples operaciones con el pipe
+
+Todos los verbos de dplyr funcionan de manera similar:
+
+-   El primer argumento es un data frame.
+-   Los argumentos posteriores describen qué hacer con el data frame usando los nombres de las variables (sin comillas).
+-   El resultado es un nuevo data frame.
+
+En conjunto, estas propiedades hacen que sea fácil encadenar varios pasos simples para lograr un resultado complejo utilizando el operador pipe.
+
+Pensemos en el siguiente código.
+
+```{r}
+by_dest <- group_by(flights, dest)
+delay <- summarise(by_dest,
+  count = n(),
+  dist = mean(distance, na.rm = TRUE),
+  delay = mean(arr_delay, na.rm = TRUE)
+)
+(delay <- filter(delay, count > 20, dest != "HNL"))
+```
+
+Hay tres pasos para preparar esta información:
+
+1.  Agrupar los vuelos por destino.
+2.  Resumir para calcular la distancia, la demora promedio y el número de vuelos en cada grupo.
+3.  Filtrar para eliminar puntos ruidosos y el aeropuerto de Honolulu, que está casi dos veces más lejos que el próximo aeropuerto más cercano.
+
+Es un poco frustrante escribir este código porque tenemos que dar un nombre a cada data frame intermedio, incluso si el data frame en sí mismo no nos importa. Nombrar cosas es difícil y enlentece nuestro análisis.
+
+```{r}
+delays <- flights %>% 
+  group_by(dest) %>% 
+  summarise(
+    count = n(),
+    dist = mean(distance, na.rm = TRUE),
+    delay = mean(arr_delay, na.rm = TRUE)
+  ) %>% 
+  filter(count > 20, dest != "HNL")
+delays
+```
+
+Este código se enfoca en las transformaciones, no en lo que se está transformando, lo que hace que sea más fácil de leer. Puedes leerlo como una serie de declaraciones imperativas: agrupa, luego resume y luego filtra. Como sugiere esta lectura, una buena forma de pronunciar %\>% cuando se lee el código es “luego”.
+
+Lo que ocurre detrás del código, es que x %\>% f(y) se convierte en f(x, y), y x %\>% f(y) %\>% g(z) se convierte en g(f(x, y), z) y así sucesivamente. Puedes usar el pipe para reescribir múltiples operaciones de forma que puedas leer de izquierda a derecha, de arriba hacia abajo.
+
+Trabajar con el pipe es uno de los criterios clave para pertenecer al tidyverse.
+
+### Aspectos a tener en cuenta
+
+#### Valores faltantes
+
+Las funciones de agregación obedecen la regla habitual de valores faltantes: si hay uno en el input, el output también será un valor faltante.
+
+```{r}
+flights %>% 
+  group_by(year, month, day) %>% 
+  summarise(mean = mean(dep_delay))
+```
+
+Afortunadamente, todas las funciones de agregación tienen un argumento na.rm que elimina los valores faltantes antes del cálculo:
+
+```{r}
+flights %>% 
+  group_by(year, month, day) %>% 
+  summarise(mean = mean(dep_delay, na.rm = TRUE))
+```
+
+En este caso, en el que los valores faltantes representan vuelos cancelados, también podríamos abordar el problema eliminando primero este tipo de vuelos. Guardaremos este conjunto de datos para poder reutilizarlo en los siguientes ejemplos.
+
+```{r}
+not_cancelled <- flights %>% 
+  filter(!is.na(dep_delay), !is.na(arr_delay))
+
+not_cancelled %>% 
+  group_by(year, month, day) %>% 
+  summarise(mean = mean(dep_delay))
+```
+
+#### Conteos
+
+Siempre que realices una agregación, es una buena idea incluir un conteo (n()) o un recuento de valores no faltantes (sum(!is.na(x))). De esta forma, puedes verificar que no estás sacando conclusiones basadas en cantidades muy pequeñas de datos. Por ejemplo, veamos los aviones (identificados por su número de cola) que tienen las demoras promedio más altas:
+
+```{r}
+delays <- not_cancelled %>% 
+  group_by(tailnum) %>% 
+  summarise(
+    delay = mean(arr_delay), 
+    n = n()
+  ) %>%
+  arrange(desc(delay))
+delays
+```
+
+Cuando se observa este tipo de tablas, resulta útil eliminar los grupos con menor número de observaciones, ya que puedes ver más del patrón y menos de la variación extrema de los grupos pequeños. Esto es lo que hace el siguiente bloque de código.
+
+```{r}
+not_cancelled %>% 
+  group_by(tailnum) %>% 
+  summarise(
+    delay = mean(arr_delay), 
+    n = n()
+  ) %>%
+  filter(n > 25) %>%
+  arrange(desc(delay))
+```
+
+Los conteos son tan útiles que dplyr proporciona un ayudante simple si todo lo que quieres es un conteo:
+
+```{r}
+not_cancelled %>% 
+  count(dest)
+```
+
+#### Transformaciones agrupadas (y filtros)
+
+La agrupación es más útil si se utiliza junto con summarise(), pero también puedes hacer operaciones convenientes con mutate() y filter():
+
+Encuentra los peores miembros de cada grupo:
+
+```{r}
+flights_sml %>% 
+  group_by(year, month, day) %>%
+  filter(rank(desc(arr_delay)) < 10)
+```
+
+Encuentra todos los grupos más grandes que un determinado umbral:
+
+```{r}
+popular_dests <- flights %>% 
+  group_by(dest) %>% 
+  filter(n() > 365)
+popular_dests
+```
+
+Estandariza para calcular las métricas por grupo:
+
+```{r}
+popular_dests %>% 
+  filter(arr_delay > 0) %>% 
+  mutate(prop_delay = arr_delay / sum(arr_delay)) %>% 
+  select(year:day, dest, arr_delay, prop_delay)
+```
