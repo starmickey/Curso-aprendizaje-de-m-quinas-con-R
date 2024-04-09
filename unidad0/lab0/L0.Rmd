@@ -17,12 +17,14 @@ Este laboratorio se adentra en los fundamentos de la Regresión Lineal Múltiple
 -   Tutorial Regresión Simple.Rmd
 
 En los siguientes ejercicios seguiremos usando el dataset gapminder presentado en el tutorial de Regresión Simple.
+Por lo cual, en primer lugar lo importamos junto con las librerías que necesitaremos.
 
 ```{r}
 install.packages("dplyr")
 install.packages("gapminder")
 ```
 
+Para comprobar la instalación y empezar conociendo nuestro dataset, imprimimos sus primeras filas.
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 library(gapminder)
@@ -39,7 +41,7 @@ Entrene un módelo de regresión lineal que estime la esperanza de vida de un pa
 # Obtenemos conjunto de datos reducido
 data <- gapminder %>%
   filter(year == 2002) %>%
-  # Usamos el logaritmo de GDP
+  # Añadimos una columna con el logaritmo de GDP
   mutate(logGdpPerCap = log(gdpPercap))
 
 # Obtenemos el modelo de regresión lineal
@@ -50,16 +52,16 @@ summary(model)
 ```
 
 #### Interpretación
+"Estimate, Intercept" = 15.6162 --> Esto se interpreta como que toda persona tiene una experanza de vida de al menos 15 años
+"Estimate, logGdpPerCap"= 5.1584 --> Esto significa que por cada punto logarítmico de PBI, una persona aumenta un año de experanza de vida.
 
-Estimate, Intercept: 15.6162 --> Toda persona tiene una experanza de vida de al menos 15 años
-
-Estimate, logGdpPerCap: 5.1584 --> por cada punto logarítmico de PBI, una persona aumenta un año de experanza de vida.
-
-Gráfica de la esperanza de vida para el continente americano respecto a su predicción:
+Para observar la eficacia del en una gráfica bidimensional que nos permita comparar visualmente los datos reales con los de la predicción, 
+filtramos nuestro dataset para quedarnos exclusivamente con uno de los continentes y lo graficamos a usando un modelo semejante para obtener una predicción. 
 
 ```{r}
 # Filtrar conjunto de datos
 data_america <- data %>% filter(continent == "Americas")
+
 # Graficar datos
 plot(
   lifeExp ~ logGdpPerCap,
@@ -75,14 +77,18 @@ model_america <- data_america %>% lm(formula = lifeExp ~ logGdpPerCap)
 abline(model_america)
 ```
 
-¿Generaría un mejor modelo si agregamos la población como una feature más? ¿En qué basa su respuesta?
+### ¿Generaría un mejor modelo si agregamos la población como una feature más? ¿En qué basa su respuesta?
 
-**RTA:** Tiene un P alto y un t chiquito (y no pone estrellitas al lado). Ergo, no mejora el modelo. Un p grande indica que es factible que la relación descubierta sea fruto del azar.
+Para determinar esto, generamos un modelo que adicione la población como feature y obtenemos un resumen de sus resultados.
 
 ``` {r}         
 model_pop <- data %>% lm(formula = lifeExp ~ continent + logGdpPerCap + pop)
 summary(model_pop)
 ```
+
+**RTA:** Se observa en el resumen del modelo que incluye la población que el P value asociado a la población (pop) es alto (0.514118) y el
+t value extremadamente pequeño (3.599e-09). Esto nos permite concluir que no se encontró relación entre la población y el PBI per cápita, o que esta 
+no es suficientemente relevante para que pueda considerarse que el añadir la población como feature mejora el modelo.
 
 ## Ejercicio 2
 
@@ -96,13 +102,12 @@ Debe realizar esta tarea en un único pipeline (usando %\>% y el paradigma funci
 gapminder %>%
   # Add column with logarithms of each GDP per capita
   mutate(logGdpPerCap = log(gdpPercap)) %>%
-  # Group by year
+  # Group rows by year
   group_by(year) %>%
-  # It recieves a dataframe as argument and returns a new dataframe
-  reframe(
-    # Convert a list to dataframe
+  summarise(
+    # This summarise parameter should be a dataframe so we convert it
     data.frame(as.list(
-    # Create a linear model and get its coefficients
+      # Create a linear model and get its coefficients
       lm(formula = lifeExp ~ logGdpPerCap + continent)$coefficients
     ))
   ) %>%
@@ -113,9 +118,13 @@ gapminder %>%
 
 ## Ejercicio 3
 
-Entrene un modelo de regresión lineal simple para cada continente que estime la esperanza de vida de un país en el año 2002 teniendo en cuenta el gdpPercap y dibuje la recta correspondiente. Debe realizar esta tarea en un único pipeline (usando %\>% y el paradigma funcional) definiendo todas las funciones necesarias.
+Entrene un modelo de regresión lineal simple para cada continente que estime
+la esperanza de vida de un país en el año 2002 teniendo en cuenta el gdpPercap
+y dibuje la recta correspondiente. Debe realizar esta tarea en un único pipeline
+(usando %\>% y el paradigma funcional) definiendo todas las funciones necesarias.
 
-Nota: les recomendamos usar la función split() para separar el dataset en una lista de dataset según el continente.
+Nota: les recomendamos usar la función split() para separar el dataset en una
+lista de dataset según el continente.
 
 ```{r}
 install.packages("purrr")
@@ -124,11 +133,11 @@ library(purrr)
 
 ```{r}
 gapminder %>%
+  # Remove all the rows whose year is distinct from 2002
+  filter(year == 2002) %>%
   # Split table in five dataframes, one for each continent
   split(.$continent) %>%
   map(function(continent) {
-    # Filter continent to only keep records from a certain year
-    continent <- continent %>% filter(year == 2002)
     # Create a linear model
     model <- lm(formula = continent$lifeExp ~ continent$gdpPercap)
     # Plot real values
