@@ -1,0 +1,453 @@
+---
+title: "El Grafico ideal para cada Objetivo."
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r include=FALSE}
+##Preprocesamiento oculto del dataset
+##Está oculto porque no es relevante para la temática del notebook
+library(tidyverse)
+library(magrittr)
+library(measurements)
+# install.packages("clinPK")
+library(clinPK)
+#install.packages("devtools")
+#library(devtools)
+
+feetToCm <- function(x){
+  feet <- as.numeric(str_split(x, "'", simplify = T)[1])
+  inch <- as.numeric(str_split(x, "'", simplify = T)[2])
+  cm <- conv_unit(feet, from = "ft", to = "cm") +
+    conv_unit(inch, from = "inch", to = "cm")
+  cm
+}
+
+fifa <- read_csv("../data/fifa.csv") %>%
+  mutate(
+    Height = Height %>% map_dbl(feetToCm),
+    Weight = Weight %>% str_remove("lbs") %>% as.numeric() %>% lbs2kg(),
+    Wage = Wage %>% map_dbl(refactorMoney),
+    Value = Value %>% map_dbl(refactorMoney),
+    Position = Position %>% as.factor()
+  )
+
+levels(fifa$Position) <- list(GK  = c("GK"), 
+                    DEF = c("LWB","RWB", "LB", "CB", "RB", "LCB","RCB"),
+                    MID = c("LM","CDM","CM","CAM","RM","RCM","LCM","LAM","RAM","LDM","RDM"), 
+                    FWD = c("RW","LW","CF", "RF", "LF", "ST","LS","RS"))
+
+```
+
+¿Qué tipo de visualización usar para qué tipo de problema? Este tutorial te ayuda a elegir el tipo correcto de gráfico para sus objetivos específicos y cómo implementarlo en R usando ggplot2.
+
+Un gráfico efectivo es aquel que:
+
+-   Transmite la información correcta sin distorsionar los hechos.
+-   Es simple pero elegante. No debería forzarte a pensar mucho para entenderlo.
+-   Usa la estética para complementar la información en lugar de eclipsarla.
+-   No está sobrecargado con información.
+
+La siguiente lista clasifica las visualizaciones en función de su propósito principal. Principalmente, hay 5 tipos de objetivos que vamos a abordar para construir gráficos por lo que, antes de crearlo, intentá calcular qué hallazgos y relaciones te gustaría transmitir o examinar a través de la visualización. Lo más probable es que caiga en una (o algunas veces más) de estas 5 categorías.
+
+# 1.Correlación
+
+Los siguientes gráficos ayudan a visualizar que tan correlacionadas están dos variables.
+
+## Gráfico de dispersión
+
+Siempre que desees comprender la naturaleza de la relación entre dos variables, invariablemente la primera opción es el diagrama de dispersión.
+
+Se puede dibujar usando geom_point(). Además, geom_smooth() que dibuja una línea de suavizado (basada en loess) de forma predeterminada, se puede ajustar para dibujar la línea de mejor ajuste mediante el método de configuración = 'lm'.
+
+```{r message=FALSE, warning=FALSE}
+ggplot(data = fifa, mapping = aes(x=Weight, y=Height)) + 
+  geom_point() + geom_smooth()
+```
+
+## Gráfico Jitter
+
+El uso de jitter es una gran técnica en gráficos de dispersión, en la cual un valor aleatorio (o para nuestro propósito pseudoaleatorio) se asigna a los puntos para separarlos de modo que no se tracen directamente uno encima del otro. De esta manera, se puede obtener una idea visual de los sitios en donde se aglomeran las observaciones sacrificando una pizca de exactitud en el gráfico. Se puede establecer un límite al ruido incorporado con el parámetro width.
+
+```{r message=FALSE, warning=FALSE}
+ggplot(data = fifa, mapping = aes(x=Weight, y=Height)) + 
+  geom_jitter(width = .5) + geom_smooth()
+```
+
+## Gráfico de recuentos
+
+La segunda opción para superar el problema de la superposición de puntos de datos es usar lo que se llama un gráfico de recuento. Siempre que haya más puntos superpuestos, el tamaño del círculo aumenta.
+
+```{r warning=FALSE}
+ggplot(data = fifa, mapping = aes(x=Weight, y=Height)) + 
+  geom_count()  + geom_smooth()
+```
+
+## Gráfico de burbujas
+
+Un gráfico de burbujas es un tipo de gráfico que muestra tres dimensiones de datos. Cada entidad con su triplete (v1, v2, v3) de datos asociados se traza como un disco que expresa dos de los valores $v_i$ a través de la ubicación $(x,y)$ del disco y el tercero a través de su tamaño.
+
+A menudo se puede incorporar información adicional sobre las entidades más allá de sus tres valores primarios al representar sus discos en colores y patrones que se eligen de manera sistemática. Y, por supuesto, se puede agregar información complementaria anotando discos con información textual, a veces tan simple como etiquetas de identificación únicas para referencias cruzadas a claves explicativas y similares.
+
+```{r message=FALSE, warning=FALSE}
+
+ggplot(data = fifa %>% filter(DataPoint<10), mapping = aes(x = Name, y = Overall)) + 
+  geom_point(aes(col=`Preferred Foot`, size=Wage)) +
+  #scale_size(range = c(1, 4), breaks = seq(100, 500, 100)) +
+  scale_y_continuous(limits = c(80,100)) +
+  labs(col="Pie Bueno", size="Salario",  x="", y = "Puntaje") + 
+  theme(axis.text.x = element_text(size=10, angle=60, hjust=1),
+        legend.position = "right") 
+  
+```
+
+## Correlogramas
+
+Un correlograma te permite examinar la correlación de múltiples variables continuas presentes en el mismo dataframe.
+
+El coeficiente de correlación (ρ) es una medida que determina el grado en que se asocian los movimientos de dos variables.
+
+-   La *correlación positiva* es una relación entre dos variables en la que ambas variables se mueven en tándem, es decir, en la misma dirección.
+
+-   La *correlación negativa* o la correlación inversa es una relación entre dos variables por las cuales se mueven en direcciones opuestas.
+
+-   Si el coeficiente de correlación de dos variables es *cero*, significa que no existe una relación lineal entre las variables. Sin embargo, esto es solo para una relación lineal; Es posible que las variables tengan una fuerte relación curvilínea.
+
+-   Cuando el valor de ρ *es cercano a cero*, generalmente entre -0.1 y +0.1, se dice que las variables no tienen una relación lineal o una relación lineal muy débil. Por ejemplo, suponga que se observan los precios del café y de las computadoras y se encuentra que tienen una correlación de +.0008; Esto significa que no hay correlación, o relación, entre las dos variables.
+
+![Tipos de Correlación](img/correlation.png)
+
+```{r}
+# devtools::install_github("kassambara/ggcorrplot")
+library(ggcorrplot)
+
+fifaNumerics <- fifa %>% select_if(is.numeric)
+corr <- round(cor(fifaNumerics), 1)
+
+ggcorrplot(corr, type = "lower") +
+  theme(axis.text.x = element_text(size=5, angle=90, hjust=1)) +
+  theme(axis.text.y = element_text(size=5, hjust=1))
+```
+
+# 2.Distribución
+
+Cuando se tiene muchas observaciones y se desea estudiar dónde y cómo se distribuyen.
+
+## Histogramas vs Diagrama de Barras
+
+El uso de geom_bar() puede ser bastante confuso. Eso es porque se puede usar para hacer un gráfico de barras y un histograma. Dejame explicar.
+
+Por defecto, geom_bar() tiene la estadística establecida para contar (stat="count"). Eso significa que cuando proporciona solo una variable X continua (y ninguna variable Y), siempre intenta hacer un histograma con los datos.
+
+Para que geom_bar() cree barras en lugar de histogramas, debés hacer dos cosas.
+
+1.  Establecer stat="identity"
+2.  Poroporcionar x e y dentro de aes() donde, x es caracter o factor e y es numérico.
+
+```{r}
+ggplot(data=fifa %>% filter(DataPoint<100), mapping=aes(x=Club)) +
+  geom_bar() + labs(title="Histograma", y="Jugadores en el Top 100") + coord_flip()
+
+fifaClubes <- fifa %>% filter(DataPoint<100) %>% group_by(Club) %>% summarise(Age = mean(Age))
+ggplot(data=fifaClubes, mapping=aes(x=Club, y=Age)) +
+  geom_bar(stat="identity") + labs(title="Barras", x="Clubes", y= "Edad Promedio") + coord_flip()
+```
+
+El histograma en una variable continua se puede lograr usando geom_bar() o geom_histogram(). Al usar geom_histogram(), puede controlar el número de barras usando la opción de bins. De lo contrario, puede establecer el rango cubierto por cada contenedor utilizando binwidth. El valor de binwidth está en la misma escala que la variable continua sobre la cual se construye el histograma.
+
+Dado que geom_histogram() brinda la facilidad de controlar tanto el número de bins como el ancho de bin, es la opción preferida para crear histograma en variables continuas.
+
+```{r}
+ggplot(data=fifa, mapping=aes(x=Overall)) +
+  geom_histogram(mapping= aes(fill=Position), 
+                 binwidth = 2, # change binwidth
+                 col="black", 
+                 size=.1) +  
+  labs(title="Histogram with Auto Binning", 
+       subtitle="Puntaje Total a través de las diferentes posiciones") 
+
+ggplot(data=fifa, mapping=aes(x=Overall)) +
+  geom_histogram(aes(fill=Position), 
+                 bins=10,  # change number of bins
+                 col="black", 
+                 size=.1) +  
+  labs(title="Histogram with Fixed Bins",
+        subtitle="Puntaje Total a través de las diferentes posiciones") 
+```
+
+## Gráfico de Densidad
+
+Una gráfica de densidad es una representación de la distribución de una variable numérica. Utiliza una estimación de densidad del núcleo para mostrar la función de densidad de probabilidad de la variable. Es una versión suavizada del histograma y se usa en el mismo concepto.
+
+```{r}
+ggplot(data=fifa, mapping=aes(x=Overall)) +
+ geom_density(fill="blue")
+```
+
+Las gráficas de densidad se usan para estudiar la distribución de una o algunas variables. Verificar la distribución de sus variables una por una es probablemente la primera tarea que debe hacer cuando obtiene un nuevo conjunto de datos. Ofrece una buena cantidad de información. Existen varias formas de distribución, aquí hay una ilustración de las 6 más comunes:
+
+![6 Distribuciones más comunes](img/densities.png)
+
+Verificar esta distribución también te puede ayudar a descubrir errores en los datos. Por ejemplo, la distribución de peine (comb) a menudo puede denotar un redondeo que se ha aplicado a la variable u otro error.
+
+Como segundo paso, el gráfico de densidad permite comparar la distribución de algunas variables. No compares más de 3 o 4, ya que la figura estaría desordenada e ilegible. Esta comparación se puede hacer mostrando las 2 variables en el mismo gráfico y usando transparencia.
+
+```{r}
+ggplot(data=filter(fifa,Club %in% c("Juventus", "River Plate")), mapping=aes(x=Overall)) +
+ geom_density(aes(fill=Club), alpha=0.3) + #usa fill para separar las curvas y alpha para establecer el nivel de transparencia
+    labs(title="Density plot",
+         subtitle="Distribución de Puntaje de los jugadores de los clubes",
+         x="Puntaje",
+         fill="Clubes") +
+   scale_fill_brewer(palette = "Set1")
+```
+
+## Diagramas de caja
+
+Los diagramas de caja son una forma estandarizada de mostrar la distribución de datos basada en un resumen de cinco números ("mínimo", primer cuartil (Q1), mediana, tercer cuartil (Q3) y "máximo").
+
+-   mediana (Q2 / 50th Percentile): el valor medio del conjunto de datos.
+-   primer cuartil (percentil Q1 / 25): el número medio entre el número más pequeño (no el "mínimo") y la mediana del conjunto de datos.
+-   tercer cuartil (percentil Q3 / 75): el valor medio entre la mediana y el valor más alto (no el "máximo") del conjunto de datos.
+-   rango intercuartil (IQR): percentil 25 al 75.
+-   bigotes (se muestran en azul)
+-   valores atípicos (mostrados como círculos verdes)
+-   "Máximo": Q3 + 1.5 \* IQR
+-   "Mínimo": Q1 -1.5 \* IQR
+
+![Partes del Boxplot](img/boxplot.png)
+
+```{r}
+ggplot(data=fifaCompleto, mapping=aes(x=Overall)) +
+ geom_boxplot() 
+```
+
+Aunque los gráficos de caja pueden parecer primitivos en comparación con un histograma o gráfico de densidad, tienen la ventaja de ocupar menos espacio, lo cual es útil cuando se comparan distribuciones entre muchos grupos o conjuntos de datos. En este caso usamos también el ancho de los diagramas para comparar los tamaños de las muestras
+
+```{r}
+someNationalities <- unique(fifa$Nationality)[sample(30,7)]
+fifaSomeNationalities <- filter(fifa,Nationality %in% someNationalities)
+my_xlab <- paste(levels(factor(fifaSomeNationalities$Nationality)),"\n(N=",table(fifaSomeNationalities$Nationality),")",sep="") #Genera las etiquetas
+
+bp<- ggplot(data=fifaSomeNationalities, mapping=aes(x=Nationality, y=Overall)) +
+  geom_boxplot(varwidth = TRUE) + 
+  labs(title="Box plot", 
+       subtitle="Distribución de Puntaje por Nacionalidad",
+       x="Países",
+       y="Puntaje") +
+  scale_x_discrete(labels=my_xlab)
+bp
+```
+
+Como funcionalidad extra se puede usar geom_text para etiquetar a los outliers.
+
+```{r}
+is_outlier <- function(x) {
+  return(x < quantile(x, 0.25) - 1.5 * IQR(x) | x > quantile(x, 0.75) + 1.5 * IQR(x))
+}
+
+filter_outlier <- function(x){x %>%
+  mutate(outlier=is_outlier(Overall)) %>% 
+  filter(outlier==TRUE)}
+
+outliers <- fifa %>%
+  group_by(Nationality) %>%
+  mutate(outlier = ifelse(is_outlier(Overall), Name, NA))
+
+library(ggrepel)
+bp +  geom_text_repel(aes(label=outlier), size=2, data=filter(outliers,Nationality %in% someNationalities))
+```
+
+## Gráficas de violín
+
+En general, las gráficas de violín son un método para trazar datos numéricos y pueden considerarse una combinación de los gráficos de caja con una gráfico de densidad. Esto es de interés, especialmente cuando se trata de datos multimodales, es decir, una distribución con más de un pico.
+
+```{r}
+ggplot(data=fifaSomeNationalities, mapping=aes(x=Nationality, y=Overall)) +
+  geom_violin(fill="brown") + geom_boxplot(width=.1, position = "dodge") +
+  labs(title="Box plot", 
+       subtitle="Distribución de Puntaje por Nacionalidad",
+       x="Países",
+       y="Puntaje") +
+  scale_x_discrete(labels=my_xlab)
+```
+
+## Marginal Histogram / Boxplot
+
+Si deseas mostrar tanto la correlación como la distribución en el mismo gráfico, podés usar el histograma marginal. Tiene un histograma de las variables X e Y en los márgenes del diagrama de dispersión.
+
+Esto se puede implementar usando la función ggMarginal () del paquete "ggExtra". Además de un histograma, puede elegir dibujar un diagrama de caja marginal o un diagrama de densidad configurando la opción de tipo respectiva.
+
+```{r}
+install.packages("ggExtra")
+library(ggExtra)
+p <- ggplot(data = fifaGrande, mapping = aes(x = Overall, y = Wage)) +
+   geom_point() + geom_smooth()
+
+ggMarginal(p, type = "histogram", fill="transparent")
+
+ggMarginal(p, type = "boxplot", fill="transparent")
+
+ggMarginal(p, type = "density", fill="blue")
+```
+
+# 3. Ranking
+
+Se utiliza para comparar la posición o el rendimiento de varios elementos entre sí. Los valores reales importan algo menos que la clasificación.
+
+## Gráfico de barras ordenadas
+
+El gráfico de barras ordenadas es un gráfico de barras ordenado por la variable del eje Y. Para esto se usa la función reorder() que trabaja sobre columnas factor ordenándolas en función de otra columna numérica.
+
+```{r}
+top100 <- fifa %>% filter(DataPoint < 100) %>% count(Club)
+ggplot(data=top100, mapping=aes(x=reorder(Club,-1*n),y=n)) +
+  geom_bar(stat="identity") +
+  labs(title="Ranking de clubes con Jugadores en el Top 100", x = "Clubes", y="Cantidad") +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+```
+
+## Gráficos lollipop
+
+Los gráficos Lollipop transmiten la misma información que en los gráficos de barras. Al reducir las barras gruesas en líneas finas, reduce el desorden y pone más énfasis en el valor. Se ve bonito y moderno.
+
+```{r}
+ggplot(data=top100, mapping=aes(x=reorder(Club,-1*n),y=n)) + 
+  geom_point(size=6) + 
+  geom_segment(aes(x=Club, 
+                   xend=Club, 
+                   y=0, 
+                   yend=n))+
+  geom_text(color="white", size=3, aes(label=n)) +
+  labs(title="Ranking de clubes con Jugadores en el Top 100", x = "Clubes", y="") +
+  scale_y_continuous(breaks=c())+
+  theme(axis.text.x = element_text(angle=55, hjust=1))
+
+```
+
+# 4.Desviación
+
+Compará la variación en los valores entre un pequeño número de elementos (o categorías) con respecto a una referencia fija.
+
+## Barras Divergentes
+
+Barras divergentes es un gráfico de barras que puede manejar valores negativos y positivos. Esto puede implementarse mediante un ajuste inteligente a los datos que se le proveen a geom_bar(). Para asegurarse de obtener barras divergentes en lugar de solo barras, tenés que asegurarte que tu variable categórica tenga 2 categorías que cambien los valores en un cierto umbral de la variable continua.
+
+```{r}
+#Normaliza la columna Wage y establece si está por encima o por debajo del promedio
+fifa100 <- fifa %>% filter(DataPoint<=100)
+fifa100 %<>% mutate(WageNorm = round((Wage - mean(Wage))/sd(Wage), 2)) %>% 
+          mutate(WageClass = ifelse(WageNorm < 0, "Bajo", "Alto"))
+
+#Ordena segun WageNorm 
+fifaSueldos <- sample_n(fifa100,30) %>% arrange(WageNorm)
+fifaSueldos$Name <- factor(fifaSueldos$Name,levels=fifaSueldos$Name)
+
+#grafica
+ggplot(data=fifaSueldos, aes(x=Name, y=WageNorm)) + 
+  geom_bar(stat='identity', aes(fill=WageClass)) +
+  scale_fill_manual(name="Sueldo", 
+                    labels = c("Por encima del Promedio", "Por debajo del Promedio"), 
+                    values = c("Alto"="#00ba38", "Bajo"="#f8766d")) + 
+  labs(subtitle="Sueldos Normalizados del TOP 100 de Jugadores del FIFA", 
+       title= "Barras Divergentes", y="Sueldo Normalizado") + 
+  coord_flip()
+
+```
+
+## Diverging Lollipop Chart
+
+Lollipop chart conveys the same information as bar chart and diverging bar. Except that it looks more modern. Instead of geom_bar, I use geom_point and geom_segment to get the lollipops right. Let’s draw a lollipop using the same data I prepared in the previous example of diverging bars
+
+```{r}
+ggplot(data=fifaSueldos, aes(x=Name, y=WageNorm)) +
+  geom_point(stat='identity', fill="black", size=5)  +
+  geom_segment(aes(y = 0, 
+                   x = Name, 
+                   yend = WageNorm, 
+                   xend = Name), 
+               color = "black") +
+  geom_text(color="white", size=2, aes(label=WageNorm)) +
+  labs(subtitle="Sueldos Normalizados del TOP 100 de Jugadores del FIFA", 
+       title= "Barras Divergentes", y="Sueldo Normalizado") + 
+  coord_flip()
+```
+
+# 5 Composición
+
+## Gráfico de Torta
+
+ggplot2 no ofrece ninguna geom específica para construir gráficos de torta. Pero la potencia de su gramática nos permite generarlo de la siguiente forma:
+
+1.  Generar un dataframe nuevo que tenga 2 columnas: los nombres de grupo y su valor
+2.  Construir un gráfico de barras apiladas con una sola barra usando la función geom_bar().
+3.  Transformarlo en círculo con coord_polar ()
+
+```{r}
+library(RColorBrewer)
+getPalette = colorRampPalette(brewer.pal(9, "Paired"))
+top100 <- fifa100 %>% count(Club) %>% arrange(desc(n))
+pie <- ggplot(data=top100, mapping=aes(x="",y=n, fill=reorder(Club,n))) +
+  geom_bar(width = 1, stat="identity", col="white") +
+  labs(title="Cantidad de Jugadores en el Top 100 por club", fill="",x="",y="") +
+  scale_fill_manual(values = getPalette(nrow(top100))) 
+
+pie
+pie2 <- pie + coord_polar(theta="y") + 
+  theme(axis.text.x=element_blank(), 
+        legend.position = "right",
+        legend.title = element_text(size = 7),
+        legend.text = element_text(size = 7))
+pie2
+```
+
+Podemos agregar etiquetas añadiendo columnas específicas al dataset, pero hay que tener cuidado para calcular la posición de las etiquetas en coordenadas polares.
+
+```{r}
+top100 %<>%
+  mutate(prop = round(n / sum(n) *100,digits = 4)) %>%
+  mutate(ypos = cumsum(prop)- 0.5*prop )
+
+pie + geom_text(data = top100,aes(y = ypos, label = prop), color = "black", size=2) +
+  coord_polar(theta="y") + 
+  theme(axis.text.x=element_blank(), 
+        legend.position = "right",
+        legend.title = element_text(size = 7),
+        legend.text = element_text(size = 7))
+
+```
+
+## Treemap
+
+Los treemap son perfectos para mostrar gran cantidad de datos de estructura jerárquica (estructura de árbol).
+
+El espacio de la visualización está dividido en rectángulos a los que se les asigna un tamaño y un orden en función de una variable cuantitativa. Los niveles de la jerarquía del treemap se visualizan como rectángulos que contienen otros rectángulos. Cada conjunto de rectángulos del mismo nivel de la jerarquía representa una columna o una expresión de una tabla de datos. Cada rectángulo individual de un nivel de la jerarquía representa una categoría de una columna.
+
+geom_treemap_text se puede usar para agregar una etiqueta de texto a cada mosaico. Por ejemplo, podemos colocar el texto en el centro del mosaico con place = "center" y expandirlo para llenar la mayor cantidad de mosaico posible con grow = TRUE.
+
+```{r}
+#install.packages("treemapify")
+library(treemapify)
+
+arg <- fifa %>% filter(Nationality=="Argentina")
+ggplot(arg, aes(area = Value , label = Name)) +
+  geom_treemap() +
+  geom_treemap_text(colour = "white", place = "centre", reflow = T, grow= T)
+```
+
+geom_treemap admite agrupar mosaicos dentro de un treemap al pasar un parámetro subgroup en mapping, dibujar un borde alrededor de cada subgrupo con geom_treemap_subgroup_border y etiquetar cada subgrupo con geom_treemap_subgroup_text. geom_treemap_subgroup_text toma los mismos argumentos para la colocación de texto y el cambio de tamaño que geom_treemap_text.
+
+```{r}
+p <- ggplot(top20, aes(area = Overall , label = Name, fill=Club, subgroup= Club)) +
+  geom_treemap() +   geom_treemap_subgroup_border() +
+  geom_treemap_subgroup_text(place = "centre", grow = T, alpha = 0.5, colour =
+                               "black", fontface = "italic", min.size = 0, reflow = T) +
+  geom_treemap_text(colour = "white", place = "bottom", reflow = T) +
+  theme(legend.position = "none")
+
+p
+p + aes(area = Overall , label = Name, fill=Nationality, subgroup= Nationality)
+p + aes(area = Overall , label = Name, fill=Position, subgroup= Position)
+
+```

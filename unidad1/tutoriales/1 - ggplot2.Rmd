@@ -1,0 +1,315 @@
+---
+title: "ggplot2: Una gramática de gráficos por capas"
+output: html_notebook
+---
+
+```{r include=FALSE}
+library(tidyverse)
+library(measurements)
+
+feetToCm <- function(x){
+  feet <- as.numeric(str_split(x, "'", simplify = T)[1])
+  inch <- as.numeric(str_split(x, "'", simplify = T)[2])
+  cm <- conv_unit(feet, from = "ft", to = "cm") +
+    conv_unit(inch, from = "inch", to = "cm")
+  cm
+}
+
+refactorMoney <- function(q){
+  if(q %>% str_detect("K")){
+    return(1000 * q %>% str_replace("K","") %>% as.numeric()) 
+  }
+  if(q %>% str_detect("M")){
+    return(1000000 * q %>% str_replace("M","") %>% as.numeric()) 
+  }
+  return(0)
+}
+
+fifa <- read_csv("../data/fifa.csv") %>%
+  filter(DataPoint<100) %>%
+  mutate(
+    Height = Height %>% map_dbl(feetToCm),
+    Weight = Weight %>% str_remove("lbs") %>% as.numeric(),
+    Wage = Wage %>% map_dbl(refactorMoney),
+    Value = Value %>% map_dbl(refactorMoney)
+  )
+
+fifaGrande <- read_csv("../data/fifa.csv") %>%
+  filter(DataPoint<1000) %>%
+  mutate(
+    Height = Height %>% map_dbl(feetToCm),
+    Weight = Weight %>% str_remove("lbs") %>% as.numeric(),
+    Wage = Wage %>% map_dbl(refactorMoney),
+    Value = Value %>% map_dbl(refactorMoney)
+  )
+
+```
+
+# ¿Por qué una gramática?
+
+¿Qué es un gráfico? ¿Cómo podemos describir sucintamente un gráfico? ¿Y cómo podemos crear el gráfico que hemos descrito? Estas son preguntas importantes para el campo de los gráficos estadísticos.
+
+Una forma de responder a estas preguntas es desarrollar una gramática: "los principios o reglas fundamentales de un arte o ciencia". Una gramática de gráficos es una herramienta que nos permite describir de manera concisa los componentes de un gráfico. Tal gramática nos permite ir más allá de los gráficos con nombre (por ejemplo, el "diagrama de dispersión") y obtener una idea de la estructura profunda que subyace a los gráficos estadísticos.
+
+Una buena gramática nos permitirá conocer la composición de gráficos complicados y revelar conexiones inesperadas entre gráficos aparentemente diferentes. Así como también proporcionar una base sólida para comprender una amplia gama de gráficos.
+
+# La gramática de ggplot2
+
+Para ser precisos, la gramática en capas define los componentes de un gráfico como:
+
+1.  un dataset predeterminado y un conjunto de mapeos de variables a elementos estéticos,
+2.  una o más capas, teniendo cada capa
+    a.  un objeto geométrico,
+    b.  una transformación estadística
+    c.  ajuste de una posición
+    d.  un dataset y un conjunto de mapeos estéticos
+3.  una escala para cada mapeo estético utilizado,
+4.  un sistema de coordenadas,
+5.  especificación de las facetas.
+
+En las secciones siguientes iremos definiendo uno a uno estos componentes
+
+## 1. Datasets y Mapeos Estéticos
+
+Los datos son obviamente una parte crítica del gráfico, pero es importante recordar que son independientes de los otros componentes: podemos construir un mismo gráfico que se pueda aplicar a múltiples conjuntos de datos. Los datos son lo que convierte un gráfico abstracto en un gráfico concreto.
+
+Junto con los datos, necesitamos una especificación de qué variables se asignan a qué estética. Por ejemplo, podríamos asignar el peso a la posición x, la altura a la posición y, y la edad al tamaño.
+
+Veamos un ejemplo con el dataset de jugadores del juego fifa
+
+```{r}
+#install.packages("ggplot2")
+options(scipen=999)
+library(ggplot2)
+
+ggplot(data = fifa, mapping = aes(x=Weight, y=Height))
+```
+
+Se dibuja un ggplot en blanco. Aunque se especifican x e y, no hay puntos o líneas en él. Esto se debe a que ggplot no asume que me refería a un diagrama de dispersión o un gráfico de líneas para dibujar. Solo le he dicho a ggplot qué conjunto de datos usar y qué columnas deben usarse para los ejes X e Y. No le he pedido explícitamente que dibuje ningún punto.
+
+También tengamos en cuenta que la función aes() se utiliza para especificar los ejes X e Y. Esto se debe a que **cualquier información que forme parte del dataframe de origen debe especificarse dentro de la función aes()**.
+
+## 2. Capas
+
+Las capas son las responsables de crear los objetos que percibimos en el gráfico. Por lo general, todas las capas de un gráfico tienen algo en común, es decir, son vistas diferentes de los mismos datos.
+
+Por ejemplo, el siguiente gráfico tiene dos capas: un gráfico de dispersión y una curva suavizada superpuesta.
+
+```{r}
+ggplot(data = fifa, mapping = aes(x=Weight, y=Height)) + 
+  geom_point() + geom_smooth()
+```
+
+### Transformaciones Estadísticas (stat) y Objetos Geométricos
+
+Una transformación estadística, o stat, transforma los datos, típicamente resumiéndolos de alguna manera. Una stat toma un conjunto de datos como entrada y devuelve un conjunto de datos como salida, por lo que una estadística puede agregar nuevas variables al conjunto de datos original.
+
+Los objetos geométricos, o geoms para abreviar, controlan el tipo de trazado que crea. Por ejemplo, usar un geom_point creará un diagrama de dispersión, mientras que usar un geom_line creará un diagrama lineal. Podemos clasificar los geoms por su dimensionalidad:
+
+-   0d: punto, texto,
+-   1d: línea,
+-   2d: polígono, intervalo.
+
+Los objetos geométricos son un componente abstracto y se pueden representar de diferentes maneras. La siguiente ilustra cuatro posibles representaciones de geom_interval.
+
+![geom de intervalo dibujado como una barra, una línea, una barra de error, y (para x e y continuas) como una cinta](img/geom.png)
+
+Cada geom tiene una stat predeterminada, y cada stat tiene una geom predeterminada. Sobreescribir estos valores predeterminados seguirá produciendo un diagrama válido, pero puede violar las convenciones gráficas.
+
+```{r}
+ggplot(data = fifa, mapping = aes(x=Weight, y=Height)) + 
+   geom_point() + # por defecto stat="identity"
+  geom_smooth() # por defecto stat="smooth"
+
+ggplot(data = fifa, mapping = aes(x=Weight, y=Height)) + 
+   geom_point(stat="sum") + 
+  geom_smooth(stat="identity") 
+```
+
+Cada geom solo puede mostrar ciertas características estéticas. Por ejemplo, un punto tiene posición, color, forma y tamaño; una línea tiene color y tamaño y así sucesivamente.
+
+```{r}
+ggplot(data = fifa, mapping = aes(x=Weight, y=Height)) + 
+  geom_point(col="steelblue", size = 3 , shape='square')  + geom_smooth(method="lm",col="firebrick",size=.5)
+```
+
+### Ajustes de Posición
+
+A veces necesitamos ajustar la posición de los elementos geométricos en el paño, cuando de lo contrario se taparían entre sí. Esto es más común en los gráficos de barras, donde apilamos o esquivamos (colocamos uno al lado del otro) las barras para evitar solapamientos.
+
+```{r}
+ggplot(data = fifa, mapping = aes(x=factor(`Jersey Number`), fill=factor(`Skill Moves`))) + 
+  geom_bar() # por defecto position = 'stack'
+
+ggplot(data = fifa, mapping = aes(x=factor(`Jersey Number`), fill=factor(`Skill Moves`))) + 
+  geom_bar(position = 'dodge')
+```
+
+En diagramas de dispersión con pocos valores únicos de x e y, a veces se añade un ruido aleatorio a los puntos para reducir la obstrucción entre ellos.
+
+```{r}
+ggplot(data = fifa, mapping = aes(x=Position, y=factor(`Jersey Number`))) + 
+   geom_point() 
+
+ggplot(data = fifa, mapping = aes(x=Position, y=factor(`Jersey Number`))) + 
+   geom_point(position="jitter")
+
+ggplot(data = fifa, mapping = aes(x=Position, y=factor(`Jersey Number`))) + 
+   geom_jitter(width = 0.01) #usar geom_jitter en lugar de geom_point nos permite controlar el ruido introducido
+```
+
+## 3.Escalas
+
+Una escala controla el mapeo de los datos a los atributos estéticos, por lo que necesitamos una escala para cada parámetro estético utilizado en una capa. Las escalas son comunes en todas las capas para garantizar una mapeo coherente de los datos a la estética.
+
+```{r}
+#Escalas Continuas
+ggplot(data = fifa, mapping = aes(x=DataPoint, y=Height)) + 
+  geom_point(mapping= aes(size=Age, col=Overall))
+
+ggplot(data = fifa, mapping = aes(x=DataPoint, y=Height)) + 
+  geom_point(mapping= aes(size=Age, col=Overall)) +
+  scale_color_gradient(low = "pink", high = "red") + #Establece los colores utilizados como extremos en la escala
+  scale_size(range = c(5, 10)) + #Establece el rango en que varían los tamaños
+  scale_x_reverse()  #Invierte la escala del eje x
+
+ggplot(data = fifa, mapping = aes(x=DataPoint, y=Height)) + 
+  geom_point(mapping= aes(size=Age, col=Overall)) +
+  scale_size_area() + #Usa el valor de la variable como area del círculo
+  scale_color_gradientn(colours = rainbow(5)) + #Utiliza una escala prefabricada para el color
+  scale_y_continuous(limits = c(50, 200), breaks=seq(50,200,10)) + #Modifica los límites y las etiquetas del eje y
+  scale_x_discrete(breaks=c()) #Elimina las etiquetas del eje x
+```
+
+```{r}
+# Variables Continuas
+data <- fifa
+clubes<-unique(data$Club)
+ggplot(filter(data,Club %in% clubes[1:10]), aes(y=Club, x=Overall)) +
+  geom_point(mapping= aes(shape=`Preferred Foot`, col=`Preferred Foot`, size=2)) +
+  scale_x_continuous(breaks=85:100)
+
+ggplot(filter(data,Club %in% clubes[1:10]), aes(y=fct_rev(Club), x=Overall)) + #Invierte la escala del eje y
+  geom_point(mapping= aes(shape=`Preferred Foot`, col=`Preferred Foot`, size=2)) +
+  scale_x_continuous(limits=c(50,100)) # HAce Zoom Out en el eje x
+```
+
+## 4.Sistemas de Coordenadas
+
+Un sistema de coordenadas, coord para abreviar, asigna la posición de los objetos en el plano del gráfico. La posición a menudo se especifica mediante dos coordenadas (x, y), pero podría ser cualquier número de coordenadas. El sistema de coordenadas cartesianas es el sistema de coordenadas más común. para dos dimensiones, mientras que las coordenadas polares y varias proyecciones de mapas se usan con menos frecuencia.
+
+Los sistemas de coordenadas afectan a la posición de todas las variables simultáneamente y difieren de las escalas en que también cambian la apariencia de los objetos geométricos. Por ejemplo, en coordenadas polares, los geoms de barra se ven como segmentos de un círculo. Además, el escalado se realiza antes de la transformación estadística, mientras que las transformaciones de coordenadas ocurren después.
+
+```{r}
+p <- ggplot(filter(fifa,Club %in% clubes[1:10]), aes(x=Club)) +
+  geom_bar(aes(fill=Club)) 
+
+p + coord_cartesian() + #Coordenadas cartesianas comunes
+  theme(axis.text.x = element_text(angle = 90))
+p + coord_flip() # Transposición de los ejes
+p + coord_equal() + # Acomoda los eje para que el gráfico sea un cuadrado
+  theme(axis.text.x = element_text(angle = 90))
+p + coord_polar(theta="x") #Transforma a coordenadas polares asignando el ángulo a la x
+p + coord_polar(theta="y") #Transforma a coordenadas polares asignando el ángulo a la y
+```
+
+## 5. Facetas
+
+También hay otra herramienta gráfica que resulta ser lo suficientemente útil como para incluirla en nuestro marco general: facetar.
+
+La creación de facetas facilita la creación de pequeños y múltiples gráficos para diferentes subconjuntos de un dataset completo. Esta es una herramienta poderosa cuando se investiga si los patrones son iguales o diferentes en todas las condiciones. La especificación de facetas describe qué variables deben usarse para dividir los datos y cómo deben organizarse.
+
+```{r warning=FALSE}
+#Simplificamos las posiciones
+x <- as.factor(fifaGrande$Position)
+levels(x) <- list(GK  = c("GK"), 
+                  DEF = c("LWB","RWB", "LB", "CB", "RB", "LCB","RCB"),
+                  MID = c("LM","CDM","CM","CAM","RM","RCM","LCM","LAM","RAM","LDM","RDM"), 
+                  FWD = c("RW","LW","CF", "RF", "LF", "ST","LS","RS"))
+ fifaGrande <- mutate(fifaGrande, Position = x)
+#--------------------------------------------------------
+p <- ggplot(data =subset(fifaGrande, !is.na(Position), !is.na(`Preferred Foot`)), mapping = aes(x=Finishing)) + 
+        geom_bar(binwidth=5, col="white") + scale_x_continuous(breaks = seq(0,100,5))
+
+p # Sin facetar 
+p + facet_wrap(~ Position) #Crea facetas por posición
+p + facet_wrap(~ Position, ncol = 1) #Crea facetas por posición y las acomoda en una sola columna
+p + facet_wrap(~ Position, nrow = 1) #Crea facetas por posición y las acomoda en una sola fila
+p + facet_grid(Position ~ `Preferred Foot`) # Clasifica por Posicion y por pie bueno generando una faceta para cada combinación
+p + facet_grid(`Preferred Foot` ~ Position) # Transpone la grilla anterior
+```
+
+```{r}
+fifaCompleto <- fifaGrande
+someClubes <- sample(unique(fifaCompleto$Club)[1:20],12)
+fifaSomeClubes <- filter(fifaCompleto,Club %in% someClubes)
+p <- ggplot(data =fifaSomeClubes, mapping = aes(x=Overall, y= Value)) + 
+        geom_point()
+
+p # Sin facetar 
+p + facet_wrap(~ Club) #Crea facetas por posición
+p + facet_wrap(~ Club, ncol = 2) #Crea facetas por posición y las acomoda en una sola columna
+p + facet_wrap(~ Club, nrow = 4) #Crea facetas por posición y las acomoda en una sola fila
+```
+
+# Personalizaciones Estéticas
+
+### Títulos
+
+```{r}
+p <- ggplot(data =filter(fifaGrande, !is.na(Position), !is.na(`Jersey Number`), `Jersey Number`< 24), 
+            mapping = aes(x=`Jersey Number`, y=Position)) + geom_count() +
+    scale_x_continuous(breaks=1:23)
+       
+p2 <- p + labs(title="Distribución de Números por Posición",
+         subtitle = "Mejores 1000 jugadores del Mundo",
+         y="Posiciones", x="Números de Camiseta",
+         size="Cantidades",
+         caption="Fuente: fifa.com")
+p
+p2
+```
+
+#### Fondo
+
+```{r}
+p2 + theme(panel.background = element_rect(fill = 'khaki'),
+          panel.grid.major = element_line(colour = "burlywood", size=1.5),
+          panel.grid.minor = element_line(colour = "tomato", 
+                                          size=.25, 
+                                          linetype = "dashed"),
+          panel.border = element_blank(),
+          axis.line.x = element_line(colour = "darkorange", 
+                                     size=1.5, 
+                                     lineend = "butt"),
+          axis.line.y = element_line(colour = "darkorange", 
+                                     size=1.5),
+          plot.margin = unit(c(2, 2, 1, 1), "cm"))
+```
+
+### Anotaciones
+
+Podemos meter etiquetas a ciertos elementos importantes del gráfico. En este caso a los jugadores que tienen más de 90 de puntaje total. Para poder hacer eso, creé un dataset reducido solo con esos nombres y se lo pondremos como data a la capa de la etiqueta.
+
+```{r}
+outliers <- fifaGrande %>% filter(Overall > 90 | Height < 165 | Height > 197)
+
+p <- ggplot(data =fifaGrande, mapping = aes(x=Height, y=Overall)) + 
+        geom_jitter() 
+
+p + geom_text(aes(label=Name), size=2.5, data=outliers)  
+p + geom_label(aes(label=Name), size=2.5, data=outliers)
+library(ggrepel)
+p + geom_text_repel(aes(label=Name), size=2.5, data=outliers)  
+p + geom_label_repel(aes(label=Name), size=2.5, data=outliers) 
+```
+
+También se puede explicitar la posición exacta del texto.
+
+```{r}
+library(grid)
+etiqueta <- grid.text("Aquí está vacío",
+                      x=0.1,  y=0.85,
+                      gp=gpar(col="firebrick", fontsize=10, fontface="bold"))
+p + annotation_custom(etiqueta)
+```

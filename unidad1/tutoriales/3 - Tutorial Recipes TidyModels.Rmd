@@ -1,0 +1,401 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidymodels)  # for the parsnip package, along with the rest of tidymodels
+library(nycflights13)
+```
+
+En este tutorial, exploraremos un paquete de tidymodels, `recipes`, que está diseñado para ayudarnos a preprocesar nuestros datos antes de entrenar el modelo. Las recetas se crean como una serie de pasos de preprocesamiento, como:
+
+-   convertir predictores cualitativos en variables indicadoras (también conocidas como variables dummy o one-hot),
+
+-   transformar datos para que estén en una escala diferente (por ejemplo, tomar el logaritmo de una variable),
+
+-   transformar grupos enteros de predictores juntos,
+
+-   extraer características clave de variables sin procesar (por ejemplo, obtener el día de la semana de una variable de fecha),
+
+etcétera. Para utilizar el código de este tutorial, deberemos instalar los siguientes paquetes: nycflights13 y tidymodels.
+
+# Los datos de vuelos de la ciudad de Nueva York.
+
+Usemos los datos de nycflights13 para predecir si un avión llega con más de 30 minutos de retraso. Este conjunto de datos contiene información sobre 325,819 vuelos que salieron cerca de la ciudad de Nueva York en 2013. Comencemos cargando los datos y haciendo algunos cambios en las variables:
+
+```{r}
+flight_data <- 
+  flights %>% 
+  mutate(
+    arr_delay = ifelse(arr_delay >= 30, "late", "on_time"),
+    arr_delay = factor(arr_delay),
+    date = lubridate::as_date(time_hour)
+  ) %>% 
+  inner_join(weather, by = c("origin", "time_hour")) %>% 
+  select(
+    dep_time, flight, origin, dest, air_time, distance,
+    carrier, date, arr_delay, time_hour
+  ) %>% 
+  na.omit() %>% 
+  mutate_if(is.character, as.factor)
+
+```
+
+Podemos ver que alrededor del 16% de los vuelos en este conjunto de datos llegaron con más de 30 minutos de retraso.
+
+```{r}
+flight_data %>% 
+  count(arr_delay) %>% 
+  mutate(prop = n/sum(n))
+```
+
+# Partición de los datos
+
+Para comenzar, dividamos este conjunto de datos en dos: un conjunto de entrenamiento y un conjunto de prueba. Mantendremos la mayoría de las filas del conjunto de datos original (subconjunto elegido al azar) en el conjunto de entrenamiento. Los datos de entrenamiento se utilizarán para ajustar el modelo y el conjunto de pruebas se utilizará para medir el rendimiento del modelo.
+
+Para hacer esto, podemos usar el paquete rsample para crear un objeto que contenga la información sobre cómo dividir los datos, y luego dos funciones rsample más para crear dataframes para los conjuntos de entrenamiento y prueba:
+
+```{r}
+# Fix the random numbers by setting the seed 
+# This enables the analysis to be reproducible when random numbers are used
+set.seed(222)
+# Create an object that keeps information of how to split data
+data_split <- flight_data %>% initial_split(prop = 3/4)
+
+# Crea dataframes para los dos conjuntos
+train_data <- training(data_split)
+test_data  <- testing(data_split)
+```
+
+# Crear receta y roles
+
+Para comenzar, creemos una receta para un modelo de regresión logística simple. Antes de entrenar el modelo, podemos usar una receta para crear algunos predictores nuevos y realizar algunos preprocesamientos requeridos por el modelo.
+
+Iniciemos una nueva receta:
+
+```{r}
+flights_rec <- 
+  recipe(arr_delay ~ ., data = train_data) 
+flights_rec
+```
+
+La función `recipe()` tal como la usamos aquí tiene dos argumentos:
+
+-   Una fórmula. Cualquier variable en el lado izquierdo de la tilde (\~) se considera el resultado del modelo (aquí, arr_delay). En el lado derecho de la tilde están los predictores. Las variables se pueden enumerar por nombre o puede utilizar el punto (.) para indicar todas las demás variables como predictores.
+
+-   Los datos. Una receta está asociada con el conjunto de datos utilizado para crear el modelo. Normalmente, este será el conjunto de entrenamiento, por lo que aquí data = train_data. Nombrar un conjunto de datos en realidad no cambia los datos en sí; sólo se utiliza para catalogar los nombres de las variables y sus tipos, como factores, números enteros, fechas, etc.
+
+Ahora podemos agregarle roles a esta receta. Podemos usar la función `update_role()` para que las recetas sepan que `flight` y `time_hour` son variables con un rol personalizado que llamamos "ID" (un nombre de rol puede ser cualquier valor de tipo caracter). Mientras que nuestra fórmula incluía todas las variables en el conjunto de entrenamiento distintas de arr_delay como predictores, esto le indica a la receta que mantenga estas dos variables pero no las use como resultados ni predictores.
+
+```{r}
+flights_rec <- 
+  recipe(arr_delay ~ ., data = train_data) %>% 
+  update_role(flight, time_hour, new_role = "ID") 
+flights_rec
+```
+
+Este paso de agregar roles a una receta es opcional; El propósito de usarlo aquí es que esas dos variables puedan retenerse en los datos pero no incluirse en el modelo. Esto puede resultar útil cuando, una vez ajustado el modelo, queremos investigar algún valor mal predicho. Estas columnas de ID estarán disponibles y se pueden utilizar para intentar comprender qué salió mal.
+
+Para obtener el conjunto actual de variables y roles, use la función `summary()`:
+
+```{r}
+summary(flights_rec)
+```
+
+# Crear features
+
+Ahora podemos comenzar a agregar pasos a nuestra receta usando el operador pipe `%>%`. Quizás sea razonable que la fecha del vuelo influya en la probabilidad de una llegada tardía. Un poco de ingeniería de features podría contribuir en gran medida a mejorar nuestro modelo. ¿Cómo se debe codificar la fecha en el modelo? La columna de fecha tiene un objeto `Date` de R, por lo que incluir esa columna "tal cual" significará que el modelo la convertirá a un formato numérico igual al número de días después de una fecha de referencia:
+
+```{r}
+flight_data %>% 
+  distinct(date) %>% 
+  mutate(numeric_date = as.numeric(date)) 
+```
+
+Es posible que la variable de fecha numérica sea una buena opción para modelar; tal vez el modelo se beneficiaría de una tendencia lineal entre las probabilidades logarítmicas de una llegada tardía y la variable numérica de la fecha. Sin embargo, podría ser mejor agregar términos del modelo derivados de la fecha que tengan mayor potencial para ser importantes para el modelo. Por ejemplo, podríamos derivar las siguientes características significativas de la variable de fecha única:
+
+```         
+el día de la semana (DOW, day of week),
+
+el mes, y
+
+si la fecha corresponde o no a un día festivo.
+```
+
+Hagamos los tres agregando pasos a nuestra receta:
+
+```{r}
+flights_rec <- 
+  recipe(arr_delay ~ ., data = train_data) %>% 
+  update_role(flight, time_hour, new_role = "ID") %>% 
+  step_date(date, features = c("dow", "month")) %>%               
+  step_holiday(date, 
+               holidays = timeDate::listHolidays("US"), 
+               keep_original_cols = FALSE)
+```
+
+¿Qué hace cada uno de estos pasos?
+
+```         
+Con step_date(), creamos dos nuevas columnas de factores con el día de la semana y el mes apropiados.
+
+Con step_holiday(), creamos una variable binaria que indica si la fecha actual es feriado o no. El valor del argumento de timeDate::listHolidays("US") utiliza el paquete timeDate para enumerar los 18 días festivos estándar de EE. UU.
+
+Con keep_original_cols = FALSE, eliminamos la variable de fecha original ya que ya no la queremos en el modelo. Muchos pasos de recetas que crean nuevas variables tienen este argumento.
+```
+
+A continuación, centraremos nuestra atención en los tipos de variables de nuestros predictores. Debido a que planeamos entrenar un modelo de regresión logística, sabemos que, en última instancia, los predictores deberán ser numéricos, a diferencia de datos nominales como cadenas y variables de factores. En otras palabras, puede haber una diferencia en cómo almacenamos nuestros datos (en factores dentro de un marco de datos) y cómo los requieren las ecuaciones subyacentes (una matriz puramente numérica).
+
+Para factores como destino y origen, la práctica estándar es convertirlos en variables ficticias o indicadoras para convertirlas en numéricas. Estos son valores binarios para cada nivel del factor. Por ejemplo, nuestra variable de origen tiene valores de "EWR", "JFK" y "LGA". La codificación de variable ficticia estándar, que se muestra a continuación, creará dos columnas numéricas de datos que son 1 cuando el aeropuerto de origen es "JFK" o "LGA" y cero en caso contrario, respectivamente.
+
+Pero, a diferencia de los métodos de fórmula del modelo estándar en R, una receta no crea automáticamente estas variables ficticias; deberás indicar tu receta para agregar este paso. Esto es por dos razones. En primer lugar, muchos modelos no requieren predictores numéricos, por lo que no siempre se prefieren las variables ficticias. En segundo lugar, las recetas también se pueden utilizar para fines ajenos al modelado, donde las versiones no ficticias de las variables pueden funcionar mejor. Por ejemplo, es posible que desees crear una tabla o un gráfico con una variable como factor único. Por esas razones, es necesario indicar explícitamente a las recetas que creen variables ficticias usando `step_dummy()`:
+
+```{r}
+flights_rec <- 
+  recipe(arr_delay ~ ., data = train_data) %>% 
+  update_role(flight, time_hour, new_role = "ID") %>% 
+  step_date(date, features = c("dow", "month")) %>%               
+  step_holiday(date, 
+               holidays = timeDate::listHolidays("US"), 
+               keep_original_cols = FALSE) %>% 
+  # Crear variables ficticias
+  step_dummy(all_nominal_predictors())
+```
+
+Aquí hicimos algo diferente que antes: en lugar de aplicar un paso a una variable individual, usamos selectores para aplicar este paso de receta a varias variables a la vez, `all_nominal_predictors()`. Las funciones del selector se pueden combinar para seleccionar intersecciones de variables.
+
+En esta etapa de la receta, este paso selecciona las variables `origin`, `dest`, y `carrier`. También incluye las dos nuevas variables, `date_dow` y `date_month`, que fueron creadas por el `step_date()` anterior.
+
+En términos más generales, los selectores de recetas significan que no siempre es necesario aplicar pasos a variables individuales de una en una. Dado que una receta conoce el tipo de variable y la función de cada columna, también se pueden seleccionar (o eliminar) utilizando esta información.
+
+Necesitamos un paso final para agregar a nuestra receta. Dado que `carrier` y `dest` tienen algunos valores de factores que ocurren con poca frecuencia, es posible que se creen variables ficticias para valores que no existen en el conjunto de entrenamiento. Por ejemplo, hay un destino que solo está en el conjunto de prueba:
+
+```{r}
+test_data %>% 
+  distinct(dest) %>% 
+  anti_join(train_data)
+```
+
+Cuando la receta se aplica al conjunto de entrenamiento, se crea una columna para `LEX` porque los niveles de factor provienen de `flight_data` (no del conjunto de entrenamiento), pero esta columna contendrá todos ceros. Este es un "predictor de varianza cero" que no tiene información dentro de la columna. Si bien algunas funciones de R no producirán un error para dichos predictores, generalmente provocan advertencias y otros problemas. `step_zv()` eliminará columnas de los datos cuando los datos del conjunto de entrenamiento tengan un valor único, por lo que se agrega a la receta después de `step_dummy()`:
+
+```{r}
+flights_rec <- 
+  recipe(arr_delay ~ ., data = train_data) %>% 
+  update_role(flight, time_hour, new_role = "ID") %>% 
+  step_date(date, features = c("dow", "month")) %>%               
+  step_holiday(date, 
+               holidays = timeDate::listHolidays("US"), 
+               keep_original_cols = FALSE) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  # filter columns with zero variance, including the ones that were created by step_dummy
+  step_zv(all_predictors())
+```
+
+# Ajustar un modelo con una receta
+
+Usemos la regresión logística para modelar los datos de vuelo. Comenzamos construyendo una especificación de modelo usando el paquete `parsnip`:
+
+```{r}
+lr_mod <- 
+  logistic_reg() %>% 
+  set_engine("glm")
+```
+
+Querremos utilizar nuestra receta en varios pasos mientras entrenamos y probamos nuestro modelo. A continuación vamos a:
+
+-   Procesar la receta utilizando el conjunto de entrenamiento: esto implica cualquier estimación o cálculo basado en el conjunto de entrenamiento. Para nuestra receta, el conjunto de entrenamiento se utilizará para determinar qué predictores deben convertirse en variables ficticias y qué predictores tendrán variación cero en el conjunto de entrenamiento y deben programarse para su eliminación.
+
+-   Aplicar la receta al conjunto de entrenamiento: creamos el conjunto de predictores final en el conjunto de entrenamiento.
+
+-   Aplicar la receta al conjunto de prueba: creamos el conjunto de predictores final en el conjunto de prueba. Aquí no se vuelve a calcular nada y no se utiliza ninguna información del conjunto de prueba; la variable ficticia y los resultados de varianza cero del conjunto de entrenamiento se aplican al conjunto de prueba.
+
+Para simplificar este proceso, podemos utilizar un `workflow` de modelo, que combina un modelo y una receta. Este es un enfoque sencillo porque a menudo se necesitan diferentes recetas para diferentes modelos, por lo que cuando se agrupan un modelo y una receta, resulta más fácil entrenar y probar workflows. Usaremos el paquete de `workflows` de tidymodels para agrupar nuestro modelo parsnip (`lr_mod`) con nuestra receta (`flights_rec`).
+
+```{r}
+flights_wflow <- 
+  workflow() %>% 
+  add_model(lr_mod) %>% 
+  add_recipe(flights_rec)
+
+flights_wflow
+```
+
+Ahora, hay una única función que se puede utilizar para preparar la receta y entrenar el modelo a partir de los predictores resultantes:
+
+```{r}
+flights_fit <- 
+  flights_wflow %>% 
+  fit(data = train_data)
+```
+
+Este objeto tiene la receta finalizada y el modelo ajustado en su interior. Es posible que desee extraer el modelo o la receta del workflow. Para hacer esto, puede utilizar las funciones auxiliares `extract_fit_parsnip()` y `extract_recipe()`. Por ejemplo, aquí extraemos el objeto del modelo ajustado y luego usamos la función `broom::tidy()` para obtener un tibble tidy de coeficientes del modelo:
+
+```{r}
+flights_fit %>% 
+  extract_fit_parsnip() %>% 
+  tidy()
+```
+
+# Modelos con Parsnip
+
+El objetivo de parsnip es proporcionar una interfaz ordenada y unificada para modelos que se pueda utilizar para probar una variedad de modelos sin atascarse en las minucias sintácticas de los paquetes subyacentes.
+
+Un desafío con las diferentes funciones de modelado disponibles en R que hacen lo mismo es que pueden tener diferentes interfaces y argumentos. Por ejemplo, para ajustar un modelo de regresión con random forest, podríamos tener:
+
+```{r}
+
+# From randomForest
+rf_1 <- randomForest(
+  y ~ ., 
+  data = dat, 
+  mtry = 10, 
+  ntree = 2000, 
+  importance = TRUE
+)
+
+# From ranger
+rf_2 <- ranger(
+  y ~ ., 
+  data = dat, 
+  mtry = 10, 
+  num.trees = 2000, 
+  importance = "impurity"
+)
+
+# From sparklyr
+rf_3 <- ml_random_forest(
+  dat, 
+  intercept = FALSE, 
+  response = "y", 
+  features = names(dat)[names(dat) != "y"], 
+  col.sample.rate = 10,
+  num.trees = 2000
+)
+```
+
+Tenga en cuenta que la sintaxis del modelo puede ser muy diferente y que los nombres (y formatos) de los argumentos también son diferentes. Esto es una molestia si cambia entre implementaciones.
+
+En este ejemplo:
+
+```         
+ el tipo de modelo es “random forest”,
+ el modo del modelo es “regresión” (a diferencia de clasificación, etc.), y
+ el motor computacional es el nombre del paquete R.
+```
+
+Los objetivos de parsnip son:
+
+-   Separar la definición de un modelo de su evaluación.
+-   Desacoplar la especificación del modelo de la implementación (ya sea que la implementación esté en R, Spark u otra cosa). Por ejemplo, el usuario llamaría a rand_forest en lugar de ranger::ranger u otros paquetes específicos.
+-   Armonizar los nombres de los argumentos (por ejemplo, n.trees, ntrees, trees) para que los usuarios solo necesiten recordar un único nombre.
+
+Usando el ejemplo anterior, el enfoque parsnip sería:
+
+```{r}
+rand_forest(mtry = 10, trees = 2000) %>%
+  set_engine("ranger", importance = "impurity") %>%
+  set_mode("regression")
+```
+
+Puede encontrar una lista de todos los modelos de parsnip en diferentes paquetes CRAN [aquí](https://www.tidymodels.org/find/parsnip) .
+
+# Utilizar un workflow ya entrenado para predecir
+
+Nuestro objetivo era predecir si un avión llega con más de 30 minutos de retraso. Acabamos de:
+
+-   Construir el modelo (lr_mod),
+
+-   Crear una receta de preprocesamiento (flights_rec),
+
+-   Incluir el modelo y la receta (flights_wflow), y
+
+-   Entrenar nuestro workflow usando una sola llamada a fit().
+
+El siguiente paso es utilizar el workflow entrenado (`flights_fit`) para predecir con los datos de prueba no vistos, lo que haremos con una sola llamada a `predict()`. El método predict() aplica la receta a los nuevos datos y luego los pasa al modelo ajustado.
+
+```{r}
+predict(flights_fit, test_data)
+```
+
+Debido a que nuestra variable de resultado aquí es un factor, la salida de `predict()` devuelve la clase predicha: late versus on_time. Pero digamos que queremos las probabilidades de clase previstas para cada vuelo. Para devolverlos, podemos especificar type = "prob" cuando usamos `predict()` o usar `augment()` con el modelo más los datos de prueba para guardarlos juntos.
+
+```{r}
+flights_aug <- 
+  augment(flights_fit, test_data)
+
+flights_aug %>%
+  select(arr_delay, time_hour, flight, .pred_class, .pred_on_time)
+```
+
+# Evaluar el modelo entrenado con Yardstick
+
+yardstick es un paquete para estimar qué tan bien funcionan los modelos utilizando los principios de tidy data.
+
+Ahora que tenemos un tibble con nuestras probabilidades de clase previstas, ¿cómo evaluaremos el rendimiento de nuestro workflow?
+
+Podemos usar una sintaxis similar a `dplyr` para calcular las características de rendimiento comunes del modelo y recuperarlas en un dataframe
+
+```{r}
+flights_aug %>% 
+  metrics(truth = arr_delay, .pred_class)
+
+flights_aug %>% 
+  roc_curve(truth = arr_delay, .pred_late) %>% 
+  autoplot()
+
+flights_aug %>%
+  roc_auc(truth = arr_delay, .pred_late)
+```
+
+#### What are accuracy and kap in the context of Machine Learning? (from ChatGPT)
+
+Certainly! In the context of machine learning, accuracy is one of the most basic evaluation metrics used to assess the performance of a classification model. It measures the proportion of correctly predicted instances out of the total instances evaluated.
+
+Here's how accuracy is calculated:
+
+$$ \text{Accuracy} = \frac{\text{Number of Correct Predictions}}{\text{Total Number of Predictions}} $$
+
+For example, if you have a binary classification problem where you are predicting whether an email is spam or not, and out of 100 emails, your model correctly predicts 85 of them, then the accuracy would be $\frac{85}{100} = 0.85$ or 85%.
+
+However, accuracy alone may not always provide a complete picture of model performance, especially when the classes are imbalanced (i.e., when one class is much more frequent than the other). In such cases, accuracy may be high simply because the model is predicting the majority class most of the time.
+
+That's where "kap" comes in. "Kap" likely refers to Cohen's kappa coefficient, also known as Cohen's kappa statistic. Cohen's kappa is a statistic that measures inter-rater agreement for categorical items. In the context of machine learning classification, it is used to assess the agreement between the predicted and actual class labels while accounting for the possibility of the agreement occurring by chance.
+
+Cohen's kappa adjusts the accuracy by taking into account the agreement expected by chance. It provides a more robust measure of classification performance, especially in situations where class distribution is imbalanced.
+
+The formula for Cohen's kappa is:
+
+$$ \kappa = \frac{{p_o - p_e}}{{1 - p_e}} $$
+
+Where: - $p_o$ is the relative observed agreement among raters (the accuracy). - $p_e$ is the hypothetical probability of chance agreement, calculated based on the observed data.
+
+Cohen's kappa typically ranges from -1 to 1, where: - $\kappa = 1$ indicates perfect agreement between the raters (perfect classification). - $\kappa = 0$ indicates agreement equivalent to that expected by chance alone. - $\kappa < 0$ indicates agreement worse than random.
+
+In summary, accuracy provides a straightforward measure of model performance, while Cohen's kappa offers a more nuanced evaluation that considers chance agreement, making it particularly useful for imbalanced classification problems.
+
+#### What is the ROC curve? (from ChatGPT)
+
+The ROC curve, or Receiver Operating Characteristic curve, is a graphical plot that illustrates the diagnostic ability of a binary classifier system as its discrimination threshold is varied. It's created by plotting the true positive rate (TPR) against the false positive rate (FPR) at various threshold settings.
+
+Let's break down the axes of the ROC curve:
+
+1.  **X-axis (False Positive Rate - FPR):** This represents the false positive rate of the classifier. It is calculated as the ratio of false positives to the total number of actual negative instances (true negatives + false positives). Mathematically, it can be expressed as:
+
+$$ FPR = \frac{FP}{FP + TN} $$
+
+Where: - $FP$ is the number of false positives (instances incorrectly classified as positive). - $TN$ is the number of true negatives (instances correctly classified as negative).
+
+The FPR essentially tells us the proportion of negative instances that were incorrectly classified as positive.
+
+2.  **Y-axis (True Positive Rate - TPR or Sensitivity):** This represents the true positive rate of the classifier. It is calculated as the ratio of true positives to the total number of actual positive instances (true positives + false negatives). Mathematically, it can be expressed as:
+
+$$ TPR = \frac{TP}{TP + FN} $$
+
+Where: - $TP$ is the number of true positives (instances correctly classified as positive). - $FN$ is the number of false negatives (instances incorrectly classified as negative).
+
+The TPR, also known as sensitivity or recall, tells us the proportion of positive instances that were correctly classified as positive.
+
+The ROC curve shows the trade-off between sensitivity (true positive rate) and specificity (true negative rate) as the classification threshold is varied. A perfect classifier would have an ROC curve that passes through the point (0,1) where the TPR is 1 (achieving perfect sensitivity) and the FPR is 0 (achieving perfect specificity).
+
+In summary, the ROC curve is a useful tool for evaluating the performance of binary classifiers across various threshold settings, providing insight into how well the classifier can distinguish between the positive and negative classes.
