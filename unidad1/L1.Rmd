@@ -172,12 +172,22 @@ Genere un pipeline que cargue el archivo fifa.csv y resuelva los siguientes prob
 
 Recuerde realizar esta tarea en un único pipeline (usando `%\>%` y el paradigma funcional) definiendo o importando todas las funciones necesarias.
 
+#### Conversión de unidades
+
+Definiremos un conjunto de funcines para las conversiones de unidades. Para esto utilizaremos la librería `measurements`
+
 ```{r}
 library(measurements)
+```
 
-# Convert feet measures to centimeter
-# Params:
-#   q - an string written in format "feet'inch", e.g "1'2"
+##### Conversor de metros a centrímetros
+
+*Parámetros:* `q`, <string> longitud en pies escrita en el formato "pies'decimal". Por ejemplo, este podría ser "1'2".
+
+*Salida:* <double> longitud en centímetros.
+
+
+```{r}
 feetToCm <- function(q){
   if(is.na(q)) { return(0) }
   
@@ -188,9 +198,16 @@ feetToCm <- function(q){
   cm
 }
 
-# Convert pount measures to kilograms
-# Params:
-#   q - an string, e.g "1lbs"
+feetToCm("1'2")
+```
+
+##### Conversor de libras a kilogramos
+
+*Parámetros:* `q`, <string> masa expresada en kilogramos en el formato "1lbs".
+
+*Salida:* <double> masa expresada en kilogramos.
+
+```{r}
 lbsToKg <- function(q){
   if(is.na(q)) { return(0) }
   
@@ -201,56 +218,127 @@ lbsToKg <- function(q){
   kgs
 }
 
-# Convert money strings to numeric
-# Params:
-#   q - an string. e.g "1M" (one million), "1K" (one thousand)
+lbsToKg("2lbs")
+```
+##### Conversor de unidades monetarias
+
+*Parámetros:* `q`, <string> cantidad expresada con un número seguido de una unidad. Ejemplos: "1M" para un millón, "1K" para mil.
+
+*Salida:* <double> cantidad expresada en pesos.
+
+```{r}
 refactorMoney <- function(q){
   if(is.na(q)) { return(0) }
-  
   if(q %>% str_detect("K")){
-    return(1000 * q %>% str_replace("K","") %>% as.numeric()) 
+    return(
+      1000 * q %>% str_replace("K","") %>% as.numeric()) 
   }
   if(q %>% str_detect("M")){
-    return(1000000 * q %>% str_replace("M","") %>% as.numeric()) 
+    return(
+      1000000 * q %>% str_replace("M","") %>%
+      as.numeric()) 
   }
   q %>% as.numeric()
 }
 
-# Get and format dataset
+refactorMoney("1.2K")
+
+```
+#### Eliminar valores nulos
+
+Analizamos el dataset y detectamos en qué casos se presentan valores nulos. Así, detectamos un conjunto de columnas que no aportan valores a las predicciones, en algunos casos son nulas y que solo ralentizan el procesamiento. Por estos motivos, optamos por eliminarlas. 
+Estas son:
+
+```{r}
+
+irrelevant_features <- c(
+  "Loaned From",
+  "Contract Valid Until",
+  "Release Clause",
+  "Photo",
+  "Flag",
+  "Club Logo",
+  "Joined",
+  "Real Face",
+  "Preferred Foot",
+  "International Reputation",
+  "Weak Foot",
+  "Skill Moves",
+  "Work Rate",
+  "Body Type",
+  "Jersey Number"
+)
+```
+
+También detectamos valores nulos en los datos que representan el desempeño de los jugadores en las distintas posiciones en el caso de los arqueros. En estos casos, optaremos por asignar un cero a los valores NA. 
+A continuación, se presentan estas columas:
+
+```{r}
+position_features <- c(
+  "LS", "ST", "RS", "LW", "LF", "CF", "RF",
+  "RW", "LAM", "CAM", "RAM", "LM", "LCM", "CM",
+  "RCM", "RM", "LWB", "LDM", "CDM", "RDM",
+  "RWB", "LB", "LCB", "CB", "RCB", "RB"
+)
+```
+
+Por otra parte, también transformaremos en cero los valores nulos de las columnas asociadas a las habilidades de los jugadores. Estas son:
+
+```{r}
+skill_features <- c(
+  "Crossing", "Finishing", "HeadingAccuracy",
+  "ShortPassing", "Volleys", "Dribbling",
+  "Curve", "FKAccuracy", "LongPassing",
+  "BallControl", "Acceleration", "SprintSpeed",
+  "Agility", "Reactions", "Balance", 
+  "ShotPower", "Jumping", "Stamina",
+  "Strength", "LongShots", "Aggression",
+  "Interceptions", "Positioning", "Vision",
+  "Penalties", "Composure", "Marking",
+  "StandingTackle", "SlidingTackle", "GKDiving",
+  "GKHandling", "GKKicking", "GKPositioning",
+  "GKReflexes"
+)
+```
+
+Finalmente, también se detectaron `NA` en las columas Position y Club que podrían ser reelevantes para nuestras predicciones. Por este motivo, en estos casos optaremos por reemplazar los `NA` por el string "UNKNOWN"
+
+#### Obtención del dataset
+
+A partir de los métodos anteriores, creamos un único pipeline para obtener y formatear nuestro dataset.
+
+```{r}
 fifa <- read_csv("data/fifa.csv") %>%
-  # Remove column which has many NA
-  select(-"Loaned From") %>%
-  # Remove irrelevant colums
-  select(
-    -"Contract Valid Until",
-    -"Release Clause",
-    -Photo,
-    -Flag,
-    -"Club Logo",
-    -Joined
-  ) %>%
+  # Eliminar columnas irrelevantes
+  select(-all_of(irrelevant_features)) %>%
   mutate(
-    # Convert units
+    # Covertir unidades
     Height = Height %>% map_dbl(feetToCm),
     Weight = Weight %>% map_dbl(lbsToKg),
     Wage = Wage %>% map_dbl(refactorMoney),
     Value = Value %>% map_dbl(refactorMoney),
-    # Replace NA in strings
-    across(c(Position, Club), ~ . %>% replace_na("UNKNOWN")),
-    # Replace NA in numeric parameters. This applies to Goal Keepers
+    # Reemplazar NA
     across(
-      .cols = c(
-        LS, ST, RS, LW, LF, CF, RF, RW, LAM, CAM, RAM, LM, LCM, CM, 
-        RCM, RM, LWB, LDM, CDM, RDM, RWB, LB, LCB, CB, RCB, RB),
+      .cols = c(Position, Club),
+      .fns = ~ . %>% replace_na("UNKNOWN")
+    ),
+    across(
+      .cols = all_of(position_features),
+      .fns = ~ . %>% replace_na(0)
+    ),
+    across(
+      .cols = all_of(skill_features),
       .fns = ~ . %>% replace_na(0)
     )
-  ) %>%
-    # Remove rows that still have NA
-    na.omit()
+  )
+  # %>%
+  # Eliminar las filas que aún tienen NA
+  # na.omit()
+  
+fifa
 ```
 
-La siguiente función nos permite comprobar que todos los `NA` fueron removidos.
-
+La siguiente función obtiene las posiciones de los NA del dataset. La ejecutamos para comprobar que todos los valores nulos fueron removidos.
 
 ```{r}
 which(is.na(fifa), arr.ind=TRUE)
@@ -271,8 +359,6 @@ simplificaPosicion <- function(data){
                     FWD = c("RW","LW","CF", "RF", "LF", "ST","LS","RS"))
   data %>% mutate(Position = x)
 }
-
-fifa <- fifa %>% simplificaPosicion()
 ```
 
 El siguiente gráfico confirma la intuición de que cada categoría de posición requiere características especiales.
@@ -285,45 +371,43 @@ Le recomendamos consultar el siguiente [link](https://www.tidymodels.org/find/re
 
 #### Preparación de los datos
 
-Se creará un objeto denominado `data` para no sobreescribir el objeto `fifa` con un dataset reducido a los datos que necesitamos.
-
-Como en este ejercicio se busca predecir las posiciones de los jugadores, eliminaremos las filas de aquellos jugadores cuya posición se desconoce.
-
+Se prepara los datos para las predicciones. Para esto, utilizaremos el método `simplifica_posicion()` para reducir el conjunto de posiciones posibles y acotaremos el conjunto a las columnas de interés.
 
 ```{r}
-data <- fifa %>%
+# Valores para identificar a los jugadores
+players_ids <- c("DataPoint", "ID", "Name", "Club", "Nationality")
+
+# Columnas utilizadas en la predicción
+recipe_columns <- c(
+  # Identificadores
+  players_ids,
+  # Salida
+  "Position", "Overall", "Value",
+  # Predictores
+  skill_features,
+  position_features
+)
+
+
+
+fifa <- fifa %>%
+  # Filter columns whose Position is unknown
+  filter(Position != "UNKNOWN") %>% 
   # Reduccir las posiciones a una de cuatro posibles valores
   simplificaPosicion() %>%
-  # Elimar filas cuya posición se desconoce
-  filter(Position != "UNKNOWN") %>%
   # Eliminar columnas irrelevantes
-  select(
-    # Datos para identificar jugador
-    ID, Name,
-    # Valor que se desea predecir
-    Position,
-    # Inputs de la predicción 
-    LS, ST, RS, LW, LF, CF, RF, RW, LAM, CAM, RAM, LM, LCM, CM, 
-    RCM, RM, LWB, CDM, RDM, RWB, LB, LCB, CB, RCB, RB, 
-    Crossing, Finishing, HeadingAccuracy, ShortPassing, Volleys, 
-    Dribbling, Curve, FKAccuracy, LongPassing, BallControl,
-    Acceleration, SprintSpeed, Agility, Reactions, Balance,
-    ShotPower, Jumping, Stamina, Strength, LongShots, Aggression, 
-    Interceptions, Positioning, Vision, Penalties, Composure,
-    Marking, StandingTackle, SlidingTackle, GKDiving, GKHandling,
-    GKKicking, GKPositioning, GKReflexes
-  ) 
+  select(all_of(recipe_columns_clasificacion))
 
-data
+fifa
 ```
 
 #### Obtener el conjunto de entrenamiento y el de testeo
 
-Luego, dividimos el dataframe `data` en un conjunto de entrenamiento y de testeo.
+Luego, dividimos el dataframe en un conjunto de entrenamiento y de testeo.
 
 ```{r}
 set.seed(42)
-data_split <- fifa %>% initial_split(prop = 3/4)
+data_split <- fifa %>%  simplificaPosicion() %>% initial_split(prop = 3/4)
 
 # Crea dataframes para los dos conjuntos:
 train_data <- training(data_split)
@@ -332,44 +416,17 @@ test_data  <- testing(data_split)
 
 #### Crear receta
 
-Asignamos roles aquellas columnas que no queremos que sean empleadas en la predicción:
+Se crea una receta cuyo output es la columna `Position` a partir del conjunto de entrenamiento. Se asigna el rol `ID` a aquellas columnas que no se desea que se emplee como predictores. No las eliminamos porque el conservar las identificaciones de los jugadores, nos ayuda en el análisis de los datos.
 
--   ID: Columna empleadas para identificar al jugador
--   Name: Nombre del jugador
 
 ```{r}
-
+# Crear receta
 receta_clasificacion <- 
-  recipe(Position ~ ., data = train_data) %>% 
-  # Elimar filas cuya posición se desconoce
-  step_filter(Position != "UNKNOWN") %>%
-  # Eliminar columnas irrelevantes
-  step_select(
-    # Datos para identificar jugador
-    ID, Name,
-    # Valor que se desea predecir
-    Position,
-    # Inputs de la predicción 
-    LS, ST, RS, LW, LF, CF, RF, RW, LAM, CAM,
-    RAM, LM, LCM, CM, RCM, RM, LWB, CDM, RDM,
-    RWB, LB, LCB, CB, RCB, RB, 
-    Crossing, Finishing, HeadingAccuracy,
-    ShortPassing, Volleys, Dribbling, Curve,
-    FKAccuracy, LongPassing, BallControl,
-    Acceleration, SprintSpeed, Agility, Reactions,
-    Balance, ShotPower, Jumping, Stamina, Strength,
-    LongShots, Aggression, Interceptions,
-    Positioning, Vision, Penalties, Composure,
-    Marking, StandingTackle, SlidingTackle,
-    GKDiving, GKHandling, GKKicking, GKPositioning,
-    GKReflexes
-  ) %>%
+  recipe(formula = Position ~ ., data = train_data) %>% 
   # Crear roles
-  update_role(
-     Name, ID, new_role = "ID"
-  ) %>%
-  # Normalizar predictores numéricos
-  step_normalize(all_numeric_predictors()) %>%
+  update_role(all_of(players_ids), new_role = "ID") %>%
+  # Si aún quedaran NA, se los reemplaza por la mediana de la columna
+  step_impute_median() %>%
   # Crear indicadores numéricos para predictores de tipo char
   step_dummy(all_nominal_predictors()) %>%
   # Eliminar valores únicos (varianza = 0)
@@ -389,14 +446,14 @@ Creamos un workflow y entrenamos el árbol de decisión con la receta.
 
 ```{r}
 # Crear el modelo de árbol de decisión
-dt_model <- decision_tree() %>%
+dt_model_clasificacion <- decision_tree() %>%
   set_engine("rpart") %>%
   set_mode("classification")
 
 # Crear un workflow que vincule el modelo y la receta
 wf_position_tree <- 
   workflow() %>% 
-  add_model(dt_model) %>% 
+  add_model(dt_model_clasificacion) %>% 
   add_recipe(receta_clasificacion)
 
 # Entrenar el modelo
@@ -411,7 +468,7 @@ wf_position_tree_fit <-
 # install.packages("rpart.plot")
 library("rpart.plot")
 
-dt_plot <-
+dt_plot_clasificacion <-
   wf_position_tree_fit %>% 
   extract_fit_engine() %>% 
   rpart.plot()
@@ -435,7 +492,7 @@ position_tree_aug %>%
   metrics(truth = Position, .pred_class)
 ```
 
-y la graficamos
+Finalmente, graficamos la curva ROC
 
 ```{r}
 position_tree_aug %>% 
@@ -454,16 +511,18 @@ Creamos un workflow y entrenamos el árbol de decisión con la receta.
 
 ```{r}
 # Crear el modelo de random forest
-rf_model <- rand_forest() %>%
+rf_model_clasificacion <- rand_forest() %>%
   set_engine("ranger") %>%
   set_mode("classification")
 
-wf_position_forest <- # variable donde debe guardar su workflow 
+# Crear un workflow que vincule el modelo y la receta
+wf_position_forest <- 
   workflow() %>% 
-  add_model(rf_model) %>% 
+  add_model(rf_model_clasificacion) %>% 
   add_recipe(receta_clasificacion)
 
-wf_position_forest_fit <- # variable donde debe guardar su workflow ya entrenado
+# Entrenar el modelo
+wf_position_forest_fit <- 
   wf_position_forest %>%
   fit(data = train_data)
 
@@ -498,20 +557,22 @@ Una vez entrenado, calcule métricas sobre el dataset de testeo.
 Creamos un workflow y entrenamos el árbol de decisión con la receta.
 
 ```{r}
-# install.packages("klaR")
-library(klaR)
+# install.packages("naivebayes")
+library(discrim)
 
 # Crear el modelo de random forest
 nb_model <- naive_Bayes() %>%
-  set_engine("klaR") %>%
+  set_engine("naivebayes") %>%
   set_mode("classification")
 
-wf_position_nb  <- # variable donde debe guardar su workflow
+# Crear un workflow que vincule el modelo y la receta
+wf_position_nb  <-
   workflow() %>% 
   add_model(nb_model) %>% 
   add_recipe(receta_clasificacion)
 
-wf_position_nb_fit <- # variable donde debe guardar su workflow ya entrenado
+# Entrenar el modelo
+wf_position_nb_fit <- 
   wf_position_nb %>%
   fit(data = train_data)
 
@@ -542,48 +603,50 @@ position_nb_aug %>%
 Intente mejorar alguno de los modelos entrenados anteriormente ya sea modificando hiperparámetros o la receta.
 
 ```{r}
-
-improved_recipe <- 
-  recipe(Position ~ ., data = train_data) %>% 
-  # Create roles
-  update_role(
-     Name, ID, new_role = "ID"
-  ) %>%
-  step_log(all_numeric_predictors()) %>%
-  # Create numeric indicators for each char-typed column
-  step_dummy(all_nominal_predictors()) %>%
-  # Avoid unique values (filter columns with zero variance)
-  step_zv(all_predictors())
-
+# Crear receta
+receta_clasificacion_mejorada <- 
+  recipe(formula = Position ~ ., data = train_data) %>% 
+  # Filter columns whose Position is unknown
+  step_filter(Position != "UNKNOWN") %>% 
+  step_filter(SlidingTackle != 0 | Position == "GK") %>% 
+  step_select(-Overall, -Value) %>%
+  step_mutate(SqrSlidingTackle = SlidingTackle ** 2 ) %>%
+  # Crear roles
+  update_role(all_of(players_ids), new_role = "ID") %>%
+  # Si aún quedaran NA, se los reemplaza por la mediana de la columna
+  step_impute_median() %>%
   
-improved_model <- dt_model %>%
+  step_normalize(all_numeric_predictors()) %>%
+  # Crear indicadores numéricos para predictores de tipo char
+  step_dummy(all_nominal_predictors()) %>%
+  # Eliminar valores únicos (varianza = 0)
+  step_zv(all_predictors()) 
+
+# Crear el modelo de árbol de decisión
+dt_model_clasificacion_mejorado <- decision_tree() %>%
   set_engine("rpart") %>%
   set_mode("classification")
-  
 
-improved_workflow <- wf_position_tree %>%
-  update_model(improved_model) %>%
-  update_recipe(improved_recipe)
+# Crear un workflow que vincule el modelo y la receta
+wf_position_tree_mejorado <- 
+  workflow() %>% 
+  add_model(dt_model_clasificacion_mejorado) %>% 
+  add_recipe(receta_clasificacion_mejorada)
 
 # Entrenar el modelo
-improved_fit <- 
-  improved_workflow %>%
+wf_position_tree_fit_mejorado <- 
+  wf_position_tree_mejorado %>%
   fit(data = train_data)
 
-improved_aug <- 
-  augment(improved_fit, test_data)
-
-improved_aug %>% 
+# Obtener métricas
+augment(wf_position_tree_fit_mejorado, test_data) %>%
   metrics(truth = Position, .pred_class)
-
-train_data
-
 
 ```
 
 # Regresión
 
-# Objetivos de regresión
+## Objetivos de regresión
 
 En el siguiente gráfico podemos ver que hay una relación directa y exponencial entre el puntaje Overall puesto por los expertos y el valor de mercado de los jugadores.
 Como el Overall es un puntaje puesto por expertos utilizando como entradas las estadísticas físicas y mentales de los jugadores, vamos a tratar de crear un regresor que prediga el puntaje Overall que daría el experto y otro regresor poder cuantificar el valor de un jugador.
@@ -600,8 +663,22 @@ ggplot(data = fifa) +
 Cree una receta que preprocese los datos para entrenar un modelo de regresión que prediga el valor de la puntuación final de cada jugador (Overall en el dataset) dependiendo de sus estadísticas de juego individuales y sus características físicas.
 
 ```{r}
-#inserte su código aquí
-receta_regresion_overall # <- variable donde debe guardar su receta 
+
+receta_regresion_overall <- 
+  # Crear la receta 
+  recipe(Overall ~ ., data = train_data) %>%
+  # Cambiar roles de columnas no usadas en la prediccion
+  update_role(all_of(players_ids), new_role = "ID") %>%
+  # Asegurarnos que el valor no se utiliza para la predicción
+  update_role(Value, new_role = "not used") %>%
+  # Si aun quedaran NA se reemplazan por la mediana
+  step_impute_median(all_numeric_predictors()) %>%
+  # Crear indicadores numéricos para predictores de tipo char
+  step_dummy(all_nominal_predictors()) %>%
+  # Eliminar valores únicos (varianza = 0)
+  step_zv(all_predictors()) 
+
+receta_regresion_overall
 ```
 
 ### Ejercicio 8
@@ -609,39 +686,157 @@ receta_regresion_overall # <- variable donde debe guardar su receta
 Cree un workflow para entrenar un arbol de decisión (con los hiperparámetros por defecto) utilizando la receta del ejercicio anterior.
 Una vez entrenado el arbol, dibújelo y calcule métricas sobre el dataset de testeo.
 
+#### Ajustar la receta con el conjunto de entrenamiento
+
+Creamos un workflow y entrenamos el árbol de decisión con la receta.
+
 ```{r}
-#inserte su código aquí
+# install.packages("pec")
+library(rpart)
 
-wf_overall_tree # <- variable donde debe guardar su workflow 
+# Crear el modelo de árbol de decisión
+dt_model_overall <- decision_tree() %>%
+  set_engine("rpart") %>%
+  set_mode("regression")
 
+# Crear un workflow que vincule el modelo y la receta
+wf_overall_tree <-
+  workflow() %>% 
+  add_model(dt_model_overall) %>% 
+  add_recipe(receta_regresion_overall)
 
-wf_overall_tree_fit # <- variable donde debe guardar su workflow ya entrenado
-
-
+# Entrenar el modelo
+wf_overall_tree_fit <-
+  wf_overall_tree %>%
+  fit(data = train_data)
 ```
+
+#### Imprimir el árbol de decisión
+
+```{r}
+# install.packages("rpart.plot")
+library("rpart.plot")
+
+dt_plot_overall <-
+  wf_overall_tree_fit %>% 
+  extract_fit_engine() %>% 
+  rpart.plot()
+```
+#### Obtener métricas de la eficacia del modelo
+
+En primer lugar, obtenemos una muestra de las predicciones y las probabilidades
+de que se prediga un valor u otro
+
+```{r}
+overall_tree_aug <- 
+  augment(wf_overall_tree_fit, test_data)
+
+overall_tree_aug
+```
+
+Luego, obtenemos las métricas para obtener la eficacia del modelo y su grado de incertidumbre o aleatoriedad.
+
+```{r}
+overall_tree_aug %>% 
+  metrics(truth = Overall, .pred)
+```
+
+NOTAS:
+* RMSE significa Root Mean Squared Error o desviación estándar
+* RSQ: significa Root Squared o variance
+* MAE: significa Mean Absolute Error 
+
 
 ### Ejercicio 9
 
 Cree un workflow para entrenar un modelo de random forest (con los hiperparámetros por defecto) utilizando la receta del ejercicio siete.
 Una vez entrenado, calcule métricas sobre el dataset de testeo.
 
+#### Ajustar la receta con el conjunto de entrenamiento
+
+Creamos un workflow y entrenamos el árbol de decisión con la receta.
+
 ```{r}
-#inserte su código aquí
+# Crear el modelo de random forest
+rf_model_overall <- rand_forest() %>%
+  set_engine("ranger") %>%
+  set_mode("regression")
 
-wf_overall_forest # <- variable donde debe guardar su workflow 
+# Crear un workflow que vincule el modelo y la receta
+wf_overall_forest <- 
+  workflow() %>% 
+  add_model(rf_model_overall) %>% 
+  add_recipe(receta_regresion_overall)
 
-overall_forest_fit # <- variable donde debe guardar su workflow ya entrenado
+# Entrenar el modelo
+overall_forest_fit <- 
+  wf_overall_forest %>%
+  fit(data = train_data)
+```
 
+#### Obtener métricas de la eficacia del modelo
 
+En primer lugar, obtenemos una muestra de las predicciones y las probabilidades
+de que se prediga un valor u otro
+
+```{r}
+overall_forest_aug <- 
+  augment(overall_forest_fit, test_data)
+
+overall_forest_aug
+```
+
+Luego, obtenemos las métricas para obtener la eficacia del modelo y su grado de incertidumbre o aleatoriedad.
+
+```{r}
+overall_forest_aug %>% 
+  metrics(truth = Overall, .pred)
 ```
 
 ### Ejercicio 10
 
 Intente mejorar alguno de los modelos entrenados anteriormente para regresión ya sea modificando hiperparámetros o la receta.
 
+#### Mejora del modelo de árbol de decisión
+
+Se observó que el modelo de árbol de decisión presentaba un error significativamente mayor al del random forest. Esto se debe a que se adoptó un engine equivocado, pues `rpart` se emplea para modelos de clasificación. Como alternativa, utilizamos el engine `partykit`
+
 ```{r}
-#inserte su código aquí
+# install.packages("bonsai")
+library(bonsai)
+
+# Crear modelo ajustado
+dt_model_overall_improved <- decision_tree(tree_depth = 10) %>%
+  set_engine("partykit") %>% 
+  set_mode("regression")
+
+# Crear un workflow que vincule el modelo y la receta
+wf_overall_tree_improved <- 
+  workflow() %>% 
+  add_model(dt_model_overall_improved) %>% 
+  add_recipe(receta_regresion_overall)
+
+# Entrenar el modelo
+wf_overall_tree_fit_improved <- 
+  wf_overall_tree_improved %>%
+  fit(data = train_data)
+
+# Obtener predicciones y probabilidades
+overall_tree_aug_improved <- 
+  augment(
+    wf_overall_tree_fit_improved,
+    test_data)
+overall_tree_aug_improved
+
+# Obtener métricas de la eficacia del modelo
+overall_tree_aug_improved %>% 
+  metrics(truth = Overall, .pred)
+
 ```
+
+Analizando los datos se observó que rpart definía un conjunto de 12 categorías, es decir, 12 valores posibles de Overall que asignaba a los jugadores según el árbol de decisión. Partysnip, en cambio, asigna un conjunto mayor de valores. 
+
+Por este motivo, partysnip obtiene valores que se asemejan más a los originales. Esto se observa en la reducción del RMSE (de 3.07 a 2.72) y del MAE (de 2.37 a 2.07). Sin embargo, al generar un conjunto mayor de valores, se ve más afectado por los extremos y esto se refleja en un RSQ mayor (de 0.80 a 0.84). 
 
 ## Value
 
@@ -650,7 +845,20 @@ Intente mejorar alguno de los modelos entrenados anteriormente para regresión y
 Cree una receta que preprocese los datos para entrenar un modelo de regresión que prediga el valor en euros de cada jugador (Value en el dataset) dependiendo de sus estadísticas de juego individuales y sus características físicas.
 
 ```{r}
-receta_regresion_value # <- variable donde debe guardar su receta 
+receta_regresion_value <- 
+  recipe(
+    formula = Value ~ .,
+    data = train_data %>% filter(Value != 0)
+  ) %>%
+  # Cambiar roles de columnas no usadas en la prediccion
+  update_role(all_of(players_ids), new_role = "ID") %>%
+  update_role(Overall, new_role = "not used") %>%
+  # Crear indicadores numéricos para predictores de tipo char
+  step_dummy(all_nominal_predictors()) %>%
+  # Eliminar valores únicos (varianza = 0)
+  step_zv(all_predictors()) 
+
+receta_regresion_value
 ```
 
 ### Ejercicio 12
@@ -658,39 +866,145 @@ receta_regresion_value # <- variable donde debe guardar su receta
 Cree un workflow para entrenar un arbol de decisión (con los hiperparámetros por defecto) utilizando la receta del ejercicio anterior.
 Una vez entrenado el arbol, dibújelo y calcule métricas sobre el dataset de testeo.
 
+#### Ajustar la receta con el conjunto de entrenamiento
+
+Creamos un workflow y entrenamos el árbol de decisión con la receta.
+
 ```{r}
-#inserte su código aquí
+library(rpart)
 
-wf_value_tree # <- variable donde debe guardar su workflow 
+# Crear el modelo de árbol de decisión
+dt_model_value <- decision_tree() %>%
+  set_engine("rpart") %>%
+  set_mode("regression")
 
+# Crear un workflow que vincule el modelo y la receta
+wf_value_tree <-
+  workflow() %>% 
+  add_model(dt_model_value) %>% 
+  add_recipe(receta_regresion_value)
 
-value_tree_fit  # <- variable donde debe guardar su workflow ya entrenado
-
-
-
+# Entrenar el modelo
+value_tree_fit <-
+  wf_value_tree %>%
+  fit(data = train_data)
 ```
+
+#### Imprimir el árbol de decisión
+
+```{r}
+library("rpart.plot")
+
+dt_plot_value <-
+  value_tree_fit %>% 
+  extract_fit_engine() %>% 
+  rpart.plot()
+```
+#### Obtener métricas de la eficacia del modelo
+
+En primer lugar, obtenemos una muestra de las predicciones y las probabilidades
+de que se prediga un valor u otro
+
+```{r}
+value_tree_aug <- 
+  augment(value_tree_fit, test_data)
+
+value_tree_aug
+```
+Luego, obtenemos las métricas para obtener la eficacia del modelo y su grado de incertidumbre o aleatoriedad.
+
+```{r}
+value_tree_aug %>% 
+  metrics(truth = Value, .pred)
+```
+
+Se observa que los valores de las métricas RMSE y MAE son números elevados pues deben compararse con los valores de la columna Value que están en el orden de los millones.
 
 ### Ejercicio 13
 
 Cree un workflow para entrenar un modelo de random forest (con los hiperparámetros por defecto) utilizando la receta del ejercicio siete.
 Una vez entrenado, calcule métricas sobre el dataset de testeo.
 
+#### Ajustar la receta con el conjunto de entrenamiento
+
+Creamos un workflow y entrenamos el árbol de decisión con la receta.
+
 ```{r}
-#inserte su código aquí
+# Crear el modelo de random forest
+rf_model_value <- rand_forest() %>%
+  set_engine("ranger") %>%
+  set_mode("regression")
 
-wf_value_forest # <- variable donde debe guardar su workflow 
+# Crear un workflow que vincule el modelo y la receta
+wf_value_forest <- 
+  workflow() %>% 
+  add_model(rf_model_value) %>% 
+  add_recipe(receta_regresion_value)
 
+# Entrenar el modelo
+value_forest_fit <- 
+  wf_value_forest %>%
+  fit(data = train_data)
+```
 
-value_forest_fit  # <- variable donde debe guardar su workflow ya entrenado
+#### Obtener métricas de la eficacia del modelo
 
+En primer lugar, obtenemos una muestra de las predicciones y las probabilidades
+de que se prediga un valor u otro
+
+```{r}
+value_forest_aug <- 
+  augment(value_forest_fit, test_data)
+
+value_forest_aug
+```
+
+Luego, obtenemos las métricas para obtener la eficacia del modelo y su grado de incertidumbre o aleatoriedad.
+
+```{r}
+value_forest_aug %>% 
+  metrics(truth = Value, .pred)
 ```
 
 ### Ejercicio 14
 
 Intente mejorar alguno de los modelos entrenados anteriormente para regresión ya sea modificando hiperparámetros o la receta.
 
+#### Mejora del modelo de árbol de decisión
+
+De la misma manera que en el caso anterior, mejoramos el modelo cambiando el engine `rpart` por `partykit`.
+
 ```{r}
-#inserte su código aquí
+# install.packages("bonsai")
+library(bonsai)
+
+# Crear modelo ajustado
+dt_model_value_improved <- decision_tree(tree_depth = 40) %>%
+  set_engine("partykit") %>% 
+  set_mode("regression")
+
+# Crear un workflow que vincule el modelo y la receta
+wf_value_tree_improved <- 
+  workflow() %>% 
+  add_model(dt_model_value_improved) %>% 
+  add_recipe(receta_regresion_value)
+
+# Entrenar el modelo
+wf_value_tree_fit_improved <- 
+  wf_value_tree_improved %>%
+  fit(data = train_data)
+
+# Obtener predicciones y probabilidades
+value_tree_aug_improved <- 
+  augment(
+    wf_value_tree_fit_improved,
+    test_data)
+value_tree_aug_improved
+
+# Obtener métricas de la eficacia del modelo
+value_tree_aug_improved %>% 
+  metrics(truth = Value, .pred)
+
 ```
 
 # Toma de Decisiones
@@ -698,20 +1012,32 @@ Intente mejorar alguno de los modelos entrenados anteriormente para regresión y
 En esta parte del laboratorio utilizaremos los clasificadores y regresores aprendidos en los ejercicios anteriores para tratar de asistir en la toma de decisiones de un club de futbol para la compra de jugadores y realizar una recomendación para la compra de un jugador para una determinada posición.
 Para la toma de estas decisiones nos basaremos solamente en las características físicas y mentales de los jugadores y confiaremos en los resultados que nos brindan los clasificadores y regresores aprendidos.
 
-Suponiendo que el stakeholder esta interesado en comprar un mediocampista (MID) y que tiene una restriccion presupuestaria de 100, debemos recomendar algún jugador dentro del conjunto de testeo.
+Suponiendo que el stakeholder esta interesado en comprar un mediocampista (MID) y que tiene una restricción presupuestaria de 100, debemos recomendar algún jugador dentro del conjunto de testeo.
 
 ### Ejercicio 15
 
-Con la idea de comprar un mediocampista confiaremos ademas en la sugerencia del clasificador, para encontrar de entre todos los jugadores mediocampistas del conjunto de testeo, aquellos que según el clasificador cumplen estas características de mediocampistas.
+Con la idea de comprar un mediocampista confiaremos además en la sugerencia del clasificador, para encontrar de entre todos los jugadores mediocampistas del conjunto de testeo, aquellos que según el clasificador cumplen estas características de mediocampistas.
 Es decir un doble filtro, donde se descartan todos los mediocampistas que según el clasificador tienen características de otra posición en el campo de juego.
 
-Utilizando el mejor clasificador del ejercicio anterior (según la medida de accuracy), filtrar todos los jugadores del conjunto de testeo (dataTest) que cumplan con la posición de mediocampista (clase MID) y que ademas el clasificador los haya clasificado como mediocampistas.
-Reportar un subset, que contenga las características físicas y mentales (columnas 55 a la 88 del dataset original), nombre del jugador (Name), posicion real (Position), y posicion predicha por el clasificador (Position_Pred).
+Utilizando el mejor clasificador del ejercicio anterior (según la medida de accuracy), filtrar todos los jugadores del conjunto de testeo (dataTest) que cumplan con la posición de mediocampista (clase MID) y que además el clasificador los haya clasificado como mediocampistas.
+Reportar un subset, que contenga las características físicas y mentales (columnas 55 a la 88 del dataset original, `skill_features`), nombre del jugador (Name), posicion real (Position), y posición predicha por el clasificador (Position_Pred).
+
 
 ```{r}
-#inserte su código aquí
+# Obtener una predicción de la posición y añadirla al objeto test_data
+# en la columna .pred_class. Se emplea el método árbol de decisión.
+position_tree_fifa_aug <- 
+  augment(wf_position_tree_fit, test_data)
 
-mids_candidatos #<- variable donde debe guardar el dataset filtrado
+mids_candidatos <- 
+  position_tree_fifa_aug %>%
+  filter(.pred_class == "MID" & Position == "MID")  %>%
+  select(
+    ID, Name, all_of(skill_features), Position, .pred_class,
+  ) %>% 
+  rename_at(".pred_class", ~"Position_pred")
+
+mids_candidatos
 ```
 
 ### Ejercicio 16
@@ -719,9 +1045,20 @@ mids_candidatos #<- variable donde debe guardar el dataset filtrado
 Utilizando el mejor de los regresores aprendidos en el L1-B (menor MSE), estimar el puntaje de cada jugador (Overall_Pred) del subset de jugadores obtenidos en el ejercicio 2.
 Agregar al dataset las columnas, Overall, Overall_Pred (la predicción del regresor) y una columna Overall_Err que contenga el error entre el valor real y la predicción (Overall_Err = Overall - Overall_Pred).
 
-```{r}
-#inserte su código aquí
 
+```{r}
+# Obtener los resultados de la mejor predicción sobre el objeto fifa y
+# añadirlos como columnas nuevas
+overall_forest_fifa_aug <- 
+  augment(overall_forest_fit, fifa) 
+
+
+fifa_predictions <- 
+  overall_forest_fifa_aug %>% 
+  rename(Overall_Pred = .pred) %>%
+  mutate(Overall_Err = Overall - Overall_Pred)
+
+fifa_predictions
 ```
 
 ### Ejercicio 17
@@ -730,19 +1067,55 @@ Utilizando el mejor de los regresores aprendidos en el L1-B (menor MSE), estimar
 Agregar al dataset las columna Value, Value_Pred (predicción del regresor) y una columna Value_Err que contenga el error entre el valor real y la predicción (Value_Err = Value - Value_Pred).
 
 ```{r}
-mids_candidatos <- mids_candidatos %>%
-  left_join(value_forest_aug) %>%
+
+value_forest_fifa_prediction <-
+  # Obtener dataset con predicciones sobre el objeto fifa
+  augment(value_forest_fit, fifa) %>%
   rename(Value_Pred = .pred) %>%
-  mutate(Value_Err = Value - Value_Pred)
+  mutate(Value_Err = Value - Value_Pred) 
+
+fifa_predictions <-
+  inner_join(
+    fifa_predictions,
+    value_forest_fifa_prediction %>%
+        # Se eliminan columnas para evitar duplicados 
+        select(ID, Value_Pred, Value_Err),
+    join_by(ID == ID)
+  )
+
+fifa_predictions
 ```
 
 ### Ejercicio 18
 
-Reordenar los mediocampistas según la variable de puntaje (Overall_Pred) que predijo el regresor en forma descendente y mostrar el top 10 en un grafico que muestre {Nombre de jugador, Overall, Overall_Pred, Overall_Err}
+Reordenar los mediocampistas según la variable de puntaje (Overall_Pred) que predijo el regresor en forma descendente y mostrar el top 10 en un gráfico que muestre {Nombre de jugador, Overall, Overall_Pred, Overall_Err}
 
 ```{r}
-#inserte su código aquí
-
+# Create bar graph
+ggplot(
+  # Create dataset
+  data = fifa_predictions %>% 
+    # Sort values
+    arrange(desc(Overall_Pred)) %>%
+    # Keep only the top ten
+    head(10) %>% 
+    # Select only some columns
+    select(Name, Overall, Overall_Pred, Overall_Err) 
+) +
+  geom_bar(
+    mapping = aes(x = Name, y = Overall),
+    stat="identity",
+    fill = "#94FFD8",
+    alpha = 0.5,
+    color = "#4bffbd") + 
+  geom_bar(
+    mapping = aes(x = Name, y = Overall_Pred),
+    stat="identity",
+    fill = "#A3D8FF",
+    alpha = 0.5,
+    color = "#58b9ff") +
+  labs(title="Overall vs Overall Prediction", x="Nombre de jugador", y= "Overall") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
 
 ```
 
@@ -751,8 +1124,40 @@ Reordenar los mediocampistas según la variable de puntaje (Overall_Pred) que pr
 Reordenar los mediocampistas según la variable de mercado (Value_Pred) que predijo el regresor en forma descendente y mostrar el top 10 en un grafico que muestre {Nombre de jugador, Value, Value_Pred, Value_Err}
 
 ```{r}
-#inserte su código aquí
-  
+
+mids_candidatos <- mids_candidatos %>% 
+  inner_join(
+    fifa_predictions %>% select(
+      ID,
+      Value, Value_Pred, Value_Err,
+      Overall, Overall_Pred, Overall_Err),
+    join_by(ID == ID)
+  )
+
+# Create bar graph
+ggplot(
+  data =  mids_candidatos %>% 
+    # Sort values
+    arrange(desc(Value_Pred)) %>%
+    # Keep only the top ten
+    head(10) %>% 
+    # Select only some columns
+    select(Name, Value, Value_Pred, Value_Err) 
+) +
+  geom_bar(
+    mapping = aes(x = Name, y = Value),
+    stat="identity",
+    fill = "#A3D8FF",
+    alpha = 0.5,
+    color = "#58b9ff") + 
+  geom_bar(
+    mapping = aes(x = Name, y = Value_Pred),
+    stat="identity",
+    fill = "#ff76ce",
+    alpha = 0.4,
+    color = "#ff32b7") +
+  labs(title="Value vs Value Prediction", x="Nombre de jugador", y= "Value") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
 ```
 
 ### Ejercicio 20
@@ -760,31 +1165,48 @@ Reordenar los mediocampistas según la variable de mercado (Value_Pred) que pred
 Recomiende 5 jugadores con alto Overall_Pred y que no superen un presupuesto de 500K (Value_Pred \<= 500K) utilizando los resultados regresores utilizados en los ejercicios anteriores.
 
 ```{r}
-#inserte su código aquí
+mids_recomendados <- 
+  mids_candidatos %>%
+  filter(Value_Pred <= 500000) %>%
+  arrange(desc(Overall_Pred)) %>%
+  head(5)
 
-mids_recomendados # <- variable donde debe guardar la lista con los nombres de los jugdores recomendados
+mids_recomendados
 ```
 
 ### Ejercicio 21
 
 Utilizando como referencia los valores reales de Overall y Value de los 5 jugadores recomendados en el ejercicio anterior.
-¿Cuales de esos 5 jugadores hubiesen resultado en buenas decisiones, cuales no y porque?
+¿Cuales de esos 5 jugadores hubiesen resultado en buenas decisiones, cuáles no y por qué?
+
+Para hallar la respuesta, en primer lugar, obtendremos los mejores jugadores a partir de los datos reales
 
 ```{r}
-#inserte su código aquí
-
+# Mejores jugadores según datos reales
+fifa %>%
+  filter(Position == "MID") %>%
+  filter(Value != 0 & Value <= 500000) %>%
+  arrange(desc(Overall)) %>%
+  head(20) %>%
+  select(Name, Overall, Value)
 ```
+Se observa que ninguno de la predicción se encuentra entre los mejores 20 jugadores. Esto se debe a que los valores extremos de Value generan muchos errores en la predicción de este valor. 
 
 ### Ejercicio 22
 
 Teniendo en cuenta el conjunto de mediocampistas que fueron eliminados incorrectamente en el ejercicio 15, ¿había algún jugador que podría llegar a haber sido tenido en cuenta según las restricciones presupuestarias del ejercicio 20?
 ¿Contratar a este hipotético jugador descartado habría sido una decisión mejor que la que se tomó en el ejercicio 21?
 
+Para responder esto, obtenemos los mejores mediocampistas.
 ```{r}
-#inserte su código aquí
-
-
+fifa %>%
+  filter(Position == "MID") %>%
+  filter(Value != 0 & Value <= 500000) %>%
+  arrange(desc(Overall)) %>%
+  head(20) %>%
+  select(Name, Overall, Value)
 ```
+RTA: Se observa que un buen número de jugadores que serían buenas opciones para las restricciones fueron descartados por una predicción de la clasificación errónea.
 
 ### Ejercicio 23
 
@@ -792,17 +1214,34 @@ Diseñar uno o más gráficos que sirvan, según su criterio, para convencer a l
 (Ver notebook GráficoIndicado para decidir qué tipo de gráfico utilizar)
 
 ```{r}
-#inserte su código aquí
-
+ggplot() +
+  geom_jitter(
+    data = fifa_predictions %>% filter(Value_Pred <= 500000 & Value < 800000),
+    mapping = aes(x = Overall, y = Value),
+    color= "#A3D8FF",
+    alpha = 0.25) + 
+  geom_jitter(
+    data = fifa_predictions %>% filter(Value_Pred > 500000 & Value < 800000),
+    mapping = aes(x = Overall, y = Value),
+    color= "#6C6EA0",
+    alpha = 0.25) +
+  labs(title = "Eficacia de la predicción")
+  
 ```
 
 ### Ejercicio 24
 
 Utilizando las variables predichas por los regresores (Overal_Pred y Value_Pred).
 Calcular una nueva medida de rendimiento (a su criterio), que permita reordenar los jugadores de manera de obtener una lista de jugadores con alto Overall y bajo Value.
-Reportar el top 10 de la medida de rendimiento {Nombre de Jujador, medida_rendimiento, Overall_Pred, Overall, Value_Pred, Value, Overall_Err, Value_Err}
+Reportar el top 10 de la medida de rendimiento {Nombre de Jugador, medida_rendimiento, Overall_Pred, Overall, Value_Pred, Value, Overall_Err, Value_Err}
 
 ```{r}
-#inserte su código aquí
-
+fifa_predictions %>% 
+  filter(Value != 0) %>%
+  mutate(Score = (Overall / log(Value) ) * 100000000) %>%
+  arrange(desc(Score)) %>%
+  head(10) %>%
+  select(
+    Name, Score, Overall, Overall_Pred, Overall_Err, Value, Value_Pred, Value_Err
+  )
 ```
