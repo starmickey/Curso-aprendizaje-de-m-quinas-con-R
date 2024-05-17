@@ -1,0 +1,139 @@
+---
+author: "Tu nombre va aquí"
+date: "14 de mayo, 2024"
+title: "Aprendizaje de Máquinas 2024 L3"
+output:
+  html_document:
+    df_print: paged
+---
+
+# APRENDIZAJE NO SUPERVISADO
+
+En este laboratorio volveremos a utilizar el dataset de FIFA para analizar los resultados de los algoritmos de clusterización. En particular vamos a averiguar si, teniendo en cuenta las habilidades y características físicas de los jugadores, surgirán naturalmente clústeres asociados a las posiciones dentro del campo de juego.
+
+En el siguiente código leeremos el dataset fifa, lo limpiaremos y nos quedaremos sólo con los jugadores con Overall mayor a 75.
+
+```{r message=FALSE, warning=FALSE}
+library(measurements)
+library(tidyverse)
+source("data/load_fifa.R")
+
+fifa <- load_fifa()
+fifa %>% nrow()
+```
+
+# Recetas para clusterización
+
+## Ejercicio 1
+Use la librería tidymodels para generar 2 recetas para preprocesar los datos de fifa para entrenar modelos de clustering.
+
+-   `receta_clustering`: preprocesa el dataset fifa con los siguientes pasos
+    -   selecciona las variables "Name", "Height", "Weight", "Position" y todas las que estén entre "Crossing" y "GKReflexes"
+    -   establece que las variables "Name" y "Position" tendrán el rol de "ID"
+    -   normaliza todas las variables numéricas para que estén en la misma escala
+-   `receta_clustering_pca`: preprocesa el dataset fifa con los mismos pasos de la receta anterior, pero agregando
+    -   aplica PCA para reducir la cantidad de features a las 2 componentes principales
+
+```{r pca_prep}
+library(tidymodels)
+
+receta_clustering 
+
+receta_clustering_pca  
+
+```
+
+## Ejercicio 2
+
+"Prepare" la `receta_clustering_pca` y grafique el porcentaje de varianza explicado por cada componente principal.
+
+```{r variance}
+#inserte su código aquí
+```
+
+## Ejercicio 3
+
+"Hornee" la `receta_clustering_pca` y muestre en un gráfico de dispersión la posición de los jugadores en el espacio bidimensional compuesto por las dos componentes principales.
+
+```{r pca_plot}
+#inserte su código aquí
+```
+# Kmeans con PCA
+
+## Ejercicio 4
+
+Encuentre el mejor número de clusters para kmeans al clusterizar los datos horneados de `receta_clustering_pca`. 
+
+*Nota*: A la hora de entrenar el modelo, utilice los hiperparámetros `nstart`=10 e `iter.max`=100
+
+```{r}
+
+
+```
+
+## Ejercicio 5
+
+Ejecute kmeans con la cantidad de clusters elegida del ejercicio anterior y muestre los resultados en un gráfico usando `fviz_cluster`.
+
+
+```{r}
+
+```
+
+## Ejercicio 6
+
+Analice la distribución de la feature "Position" en los clusters y determine si puede encontrar alguna lógica en la clusterización hecha por kmeans.
+
+```{r}
+#inserte su código aquí
+```
+
+# DBSCAN con PCA
+
+## Ejercicio 7
+
+Encuentre el mejor valor de `eps` para DBSCAN al clusterizar los datos horneados de `receta_clustering_pca`. 
+
+*Nota*: Utilice `MinPts` = 5
+
+```{r}
+#inserte su código aquí
+```
+
+## Ejercicio 8
+
+Ejecute DBSCAN con los hiperparámetros elegidos en el ejercicio anterior y muestre los resultados en un gráfico usando `fviz_cluster`.
+
+```{r}
+#inserte su código aquí
+```
+## Ejercicio 9
+
+Analice la distribución de la feature "Position" en los clusters y determine si puede encontrar alguna lógica en la clusterización hecha por dbscan.
+
+```{r}
+#inserte su código aquí
+```
+
+# Clustering sobre las features originales
+
+## Ejercicio 10
+
+Repita los pasos de los ejercicios anteriores para entrenar kmeans sobre los datos horneados de `receta_clustering`.
+
+```{r}
+#inserte su código aquí
+```
+
+# Profundizando el análisis de los jugadores de campo
+
+## Ejercicio 11
+
+Dado que los arqueros son un conjunto tan compacto y separable, verifique si eliminarlos del dataset mejora la separación de kmeans. 
+
+Modifique la `receta_clustering_pca` para agregar un paso que filtre a los arqueros del dataset y repita todos los ejercicios asociados a kmeans. Determine si hay una mejora sustancial en la separación de las tres categorias de jugadores de campo.
+
+```{r}
+#inserte su código aquí
+```
+

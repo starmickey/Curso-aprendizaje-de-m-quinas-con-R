@@ -1,0 +1,347 @@
+---
+title: 'Entrene y evalúe modelos de agrupación en clústeres utilizando Tidymodels'
+output:
+  html_document:
+    css: style_7.css
+    df_print: paged
+    theme: flatly
+    highlight: breezedark
+    toc: yes
+    toc_float: yes
+    code_download: yes
+---
+
+```{r setup, include=FALSE, eval=T}
+knitr::opts_chunk$set(warning = F, message = F)
+library(tidyverse)
+library(tidymodels)
+```
+
+## Una introducción al Clustering
+
+El `Clustering` es una forma de aprendizaje automático *`no supervisado`* en el que las observaciones se `agrupan en clusters` basándose en `similitudes` en sus valores de datos, o *features*. Este tipo de aprendizaje automático se considera no supervisado porque no utiliza valores de *etiquetas* previamente conocidos para entrenar un modelo; En un modelo de clustering, la etiqueta es el grupo al que se asigna la observación, basándose únicamente en sus features.
+
+El clustering funciona separando los casos de entrenamiento en función de las similitudes que pueden determinarse a partir de los valores de sus features. Quizás los dos enfoques de agrupación en clústeres más conocidos sean: `kmeans` y `dbscan`. En kmeans, buscamos dividir las observaciones en un número preespecificado de grupos. Por otro lado, en dbscan, no sabemos de antemano cuántos clusters queremos.
+
+Piénsalo de esta manera; Las características numéricas de una entidad determinada pueden considerarse como coordenadas vectoriales que definen la posición de la entidad en un espacio de n dimensiones. Lo que busca hacer un modelo de clustering es identificar grupos de entidades que están cerca unas de otras y al mismo tiempo separadas de otros grupos.
+
+The best way to learn about clustering is to try it for yourself, so that's what you'll do in this exercise.
+
+## 1. Principal Component Analysis (PCA)
+
+Echemos un vistazo a un conjunto de datos que contiene mediciones de diferentes especies de semillas de trigo.
+
+```{r read_url, message=F, warning=F}
+# Load the core tidyverse and make it available in your current R session
+library(tidyverse)
+
+# Read the csv file into a tibble
+seeds <- read_csv(file = "https://raw.githubusercontent.com/MicrosoftDocs/ml-basics/master/data/seeds.csv")
+
+# Print the first 10 rows of the data
+seeds %>% 
+  slice_head(n = 5)
+
+
+
+```
+
+En este tutorial, trabajaremos con las primeras 6 columnas de "características". Para fines de **trazado**, codifiquemos la columna *etiqueta* como categórica. Tidymodels proporciona una manera clara de excluir esta variable al ajustar un modelo a nuestros datos. Recuerde, estamos tratando con un aprendizaje no supervisado, que no utiliza valores de *etiqueta* previamente conocidos para entrenar un modelo.
+
+```{r select}
+# Narrow down to desired features
+seeds_select <- seeds %>% 
+  select(!groove_length) %>% 
+  mutate(species = factor(species))
+
+# View first 5 rows of the data
+seeds_select %>% 
+  slice_head(n = 5)
+
+```
+
+Como puede ver, ahora tenemos seis *características* para cada *observación* de la especie de una semilla. Entonces podrías interpretarlas como coordenadas que describen la ubicación de cada semilla en un espacio de seis dimensiones.
+
+Ahora bien, por supuesto, el espacio de seis dimensiones es difícil de visualizar en un mundo tridimensional o en un gráfico bidimensional; entonces aprovecharemos una técnica matemática llamada *`Análisis de Componentes Principales`* (PCA) para analizar las relaciones entre las características y resumir cada observación como coordenadas para dos componentes principales; en otras palabras, transformaremos los puntos de un espacio de seis dimensiones en coordenadas bidimensionales.
+
+*`Análisis de componentes principales`* (PCA) es un método de reducción de dimensiones que tiene como objetivo reducir el espacio de características, de modo que la mayor parte de la información o la variabilidad en el conjunto de datos se pueda explicar utilizando menos características no correlacionadas.
+
+> PCA funciona recibiendo como entrada P variables (en este caso seis) y calculando la combinación lineal normalizada de las P variables. Esta nueva variable es la combinación lineal de las seis variables que captura la mayor varianza de todas ellas. PCA continúa calculando otras combinaciones lineales normalizadas **pero** con la restricción de que deben estar "completamente no correlacionadas" con todas las demás combinaciones lineales normalizadas (debe ser perpendicular a las componentes anteriores). Por favor mira:
+>
+> -   [Análisis de componentes principales](https://bradleyboehmke.github.io/HOML/pca.html), Boehmke & Greenwell, aprendizaje automático práctico con R
+>
+> -   [Métodos no supervisados](https://cimentadaj.github.io/ml_socsci/unsupervised-methods.html), Jorge Cimentada Machine, Aprendizaje para científicos sociales.
+>
+> para leer más.
+
+Veamos esto en acción creando la especificación de una "receta" que estimará las *componentes principales* en función de nuestras seis variables. Luego `"prepararemos"` y `"hornearemos"` la receta para aplicar los cálculos.
+
+> PCA funciona bien cuando las variables están normalizadas ("centradas" y "escaladas")
+
+```{r pca_prep}
+# Specify a recipe for pca
+pca_rec <- recipe(~ ., data = seeds_select) %>% 
+  update_role(species, new_role = "ID") %>% 
+  step_normalize(all_predictors()) %>% 
+  step_pca(all_predictors(), num_comp = 2, id = "pca")
+
+# Print out recipe
+pca_rec
+
+```
+
+En comparación con las técnicas de aprendizaje supervisado, no tenemos una variable de "resultado" en esta receta.
+
+Al actualizar la función de la columna "species" a "ID", esto le indica a la receta que mantenga la variable, pero no la use como resultado o predictor.
+
+Al llamar a `prep()` se estiman las estadísticas requeridas por PCA. Para aplicarlas a `seeds_features` se puede usar `bake(new_data = NULL)`, y así obtener la transformación de nuestras features.
+
+```{r bake}
+# Estimate required statistcs 
+pca_estimates <- prep(pca_rec)
+
+# Return preprocessed data using bake
+features_2d <- pca_estimates %>% 
+  bake(new_data = NULL)
+
+# Print baked data set
+features_2d %>% 
+  slice_head(n = 5)
+
+```
+
+🤩 Estos dos componentes capturan la cantidad máxima de información (es decir, varianza) en las variables originales. A partir del resultado de nuestra receta preparada `pca_estimates`, podemos examinar cuánta variación representa cada componente:
+
+```{r variance}
+# Examine how much variance each PC accounts for
+pca_estimates %>% 
+  tidy(id = "pca", type = "variance") %>% 
+  filter(str_detect(terms, "percent"))
+
+
+theme_set(theme_light())
+# Plot how much variance each PC accounts for
+pca_estimates %>% 
+  tidy(id = "pca", type = "variance") %>% 
+  filter(terms == "cumulative variance") %>% 
+  mutate(tot=max(value)) %>% 
+  ggplot(mapping = aes(x = component, y = value*100/tot)) +
+  geom_col(fill = "midnightblue", alpha = 0.7) +
+  ylab("% of total variance")
+```
+
+Este resultado muestra qué tan bien cada componente principal explica las seis variables originales. Por ejemplo, el primer componente principal (PC1) explica aproximadamente el "72%" de la varianza de las seis variables. El segundo componente principal explica un "16,97%" adicional, lo que da una variación porcentual acumulada de "89,11%". Esto es ciertamente mejor. Significa que las dos primeras variables parecen tener cierto poder para resumir las seis variables originales.
+
+Naturalmente, la primera PC (PC1) captura la mayor variación, seguida de la PC2, luego la PC3, etc.
+
+Ahora que tenemos los puntos de datos traducidos a dos dimensiones PC1 y PC2, podemos visualizarlos en un gráfico:
+
+```{r pca_plot}
+# Visualize PC scores
+features_2d %>% 
+  ggplot(mapping = aes(x = PC1, y = PC2)) +
+  geom_point(size = 2, color = "dodgerblue3")
+
+```
+
+Esperemos que pueda ver al menos dos, posiblemente tres, grupos de puntos de datos razonablemente distintos; pero aquí radica uno de los problemas fundamentales del clustering: sin etiquetas de clase conocidas, ¿cómo saber en cuántos clusters separar los datos?
+
+Una forma de intentar averiguarlo es utilizar una muestra de datos para crear una serie de modelos de clustering con un número creciente de clusters y medir con qué precisión están agrupados los data points dentro de cada grupo. Una métrica que se utiliza a menudo para medir esta compacidad es la *suma de cuadrados dentro del grupo* (WCSS), donde valores más bajos significan que los puntos de datos están más cerca. Luego puede trazar el WCSS para cada modelo.
+
+Usaremos la función incorporada `kmeans()`, que acepta un dataframe con todas las columnas numéricas como argumento principal para realizar la agrupación; significa que tendremos que eliminar la columna *species*. Para la agrupación en clústeres, se [recomienda](https://developers.google.com/machine-learning/clustering/prepare-data) que los datos tengan la misma escala. Podemos utilizar el paquete de recetas para realizar estas transformaciones.
+
+```{r clustering}
+# Drop target column and normalize data
+seeds_features<- recipe(~ ., data = seeds_select) %>% 
+  step_rm(species) %>% 
+  step_normalize(all_predictors()) %>% 
+  prep() %>% 
+  bake(new_data = NULL)
+
+# Print out data
+seeds_features %>% 
+  slice_head(n = 5)
+```
+
+Ahora, exploremos el WCSS de diferentes números de clústeres.
+
+Usaremos `map()` del paquete [purrr](https://purrr.tidyverse.org/) para aplicar funciones a cada elemento de la lista.
+
+> Las funciones [`map()`](https://purrr.tidyverse.org/reference/map.html) le permiten reemplazar muchos bucles for con código que es más conciso y más fácil de leer. El mejor lugar para aprender sobre las funciones [`map()`](https://purrr.tidyverse.org/reference/map.html) es el [capítulo de iteración](http://r4ds.had.co.nz%20/iteration.html) en R para ciencia de datos.
+>
+> `broom::augment.kmeans()` acepta un objeto modelo y devuelve un tibble con exactamente una fila de resúmenes del modelo. Los resúmenes suelen ser medidas de bondad de ajuste, valores p para pruebas de hipótesis sobre residuos o información de convergencia de modelos.
+
+```{r}
+set.seed(2056)
+
+clusterizar <- function(k,data){
+  kmeans(x = data, centers = k, nstart = 20)
+}
+
+# create a DF to use in a ggplot visualisation
+tot.withins_df <- tibble(k = 1:10) %>% 
+  mutate(
+    tot.withinss = k %>%
+      map(clusterizar, seeds_features) %>%
+      map_dbl(~.$tot.withinss))
+
+
+
+
+# Plot Total within-cluster sum of squares (tot.withinss)
+tot.withins_df %>% 
+  ggplot(mapping = aes(x = k, y = tot.withinss)) +
+  geom_line(size = 1.2, alpha = 0.5, color = "dodgerblue3") +
+  geom_point(size = 2, color = "dodgerblue3")
+```
+
+Buscamos **minimizar** la suma total de cuadrados dentro del cluster. El gráfico muestra una gran reducción en WCSS (es decir, mayor *compacidad*) a medida que el número de grupos aumenta de uno a dos, y una reducción adicional notable de dos a tres grupos. Después de eso, la reducción es menos pronunciada, lo que resulta en un "codo" 💪 en el gráfico en alrededor de tres grupos. Esta es una buena indicación de que hay dos o tres grupos de puntos de datos razonablemente bien separados.
+
+## 2. K-Means Clustering
+
+Después de crear una serie de modelos de agrupación con diferentes números de clusters y trazar el WCSS entre las agrupaciones, notamos una curva alrededor de "k = 3". Esta curva indica que los grupos adicionales más allá del tercero tienen poco valor y que hay dos o tres grupos de puntos de datos razonablemente bien separados.
+
+Entonces, realicemos agrupaciones *K-Means* especificando `k = 3` clusters y agreguemos las clasificaciones al conjunto de datos usando `augment`.
+
+```{r finalize model}
+set.seed(2056)
+# Fit and predict clusters with k = 3
+final_kmeans <- kmeans(seeds_features, centers = 3, nstart = 100, iter.max = 1000)
+
+# Add cluster prediction to the data set
+results <- augment(final_kmeans, seeds_features) %>% 
+# Bind pca_data - features_2d
+  bind_cols(features_2d)
+
+results %>% 
+  slice_head(n = 5)
+
+```
+
+```{r cluster_plot1}
+# Plot km_cluster assignmnet on the PC data
+results %>% 
+  ggplot(mapping = aes(x = PC1, y = PC2)) +
+  geom_point(aes(col = .cluster), size = 2) +
+  scale_color_manual(values = c("darkorange","purple","cyan4"))
+
+fviz_cluster(final_kmeans, seeds_features, frame = FALSE, geom = "point")
+
+```
+
+🤩🤩 Con suerte, los datos se han separado en tres grupos distintos.
+
+Entonces, ¿cuál es el uso práctico de la agrupación? En algunos casos, es posible que tenga datos que necesite agrupar en grupos distintos sin saber cuántos grupos hay o qué indican. Por ejemplo, una organización de marketing podría querer separar a los clientes en distintos segmentos y luego investigar cómo esos segmentos exhiben diferentes comportamientos de compra.
+
+En el caso de los datos de semillas, las diferentes especies de semillas ya se conocen y están codificadas como 0 (*Kama*), 1 (*Rosa*) o 2 (*Canadian*), por lo que podemos usar estos identificadores para comparar los clasificaciones de especies para los grupos identificados por nuestro algoritmo no supervisado.
+
+```{r cluster_sp}
+# Plot km_cluster assignmnet on the PC data
+results %>% 
+  ggplot(mapping = aes(x = PC1, y = PC2)) +
+  geom_point(aes(shape = .cluster, color = species), size = 2, alpha = 0.8) +
+  scale_color_manual(values = c("darkorange","purple","cyan4"))
+
+```
+
+Puede haber algunas diferencias entre las asignaciones de grupos y las etiquetas de clases, como lo muestran los diferentes colores (especies) dentro de cada grupo (forma). Pero el modelo K-Means debería haber hecho un trabajo razonable al agrupar las observaciones de modo que las semillas de la misma especie estén generalmente en el mismo grupo. 💪
+
+# DBSCAN: Clustering basado en densidad
+
+Los métodos de clustering básicos como K-means son adecuados para encontrar grupos de forma esférica o convexos. En otras palabras, funcionan bien para grupos compactos y bien separados. Además, también se ven gravemente afectados por la presencia de ruido y valores atípicos en los datos.
+
+La siguiente figura muestra un conjunto de datos que contiene clusters no convexos y valores atípicos/ruido. Se utiliza el conjunto de datos simulado `multishapes` [en el paquete `factoextra`].
+
+```{r}
+#install.packages("factoextra")
+library(factoextra)
+data("multishapes")
+ggplot(multishapes) + geom_point(aes(x=x,y=y))
+```
+
+El gráfico anterior contiene 5 grupos y valores atípicos, que incluyen:
+
+-   2 racimos ovales
+-   2 grupos lineales
+-   1 grupo compacto
+
+Dados estos datos, el algoritmo k-means tiene dificultades para identificar estos grupos con forma arbitraria. Para ilustrar esta situación, el siguiente código R calcula el algoritmo K-means en las múltiples formas del conjunto de datos [en el paquete factoextra]. La función fviz_cluster() [de factoextra] se utiliza para visualizar los clusters.
+
+```{r}
+df <- multishapes[, 1:2]
+set.seed(123)
+km.res <- kmeans(df, 5, nstart = 25)
+fviz_cluster(km.res, df, frame = FALSE, geom = "point")
+```
+Sabemos que hay cinco grupos en los datos, pero se puede ver que el método k-means identifica de manera incorrecta los cinco grupos.
+
+Este capítulo describe DBSCAN, un algoritmo de agrupamiento basado en densidad, presentado en Ester et al. 1996, que puede usarse para identificar grupos de cualquier forma en un conjunto de datos que contiene ruido y valores atípicos. DBSCAN significa agrupación espacial basada en densidad y aplicación con ruido.
+
+Las ventajas de DBSCAN son:
+
+     * A diferencia de K-means, DBSCAN no requiere que el usuario especifique la cantidad de clústeres que se generarán
+     * DBSCAN puede encontrar cualquier forma de grupos. El grupo no tiene por qué ser circular.
+     * DBSCAN puede identificar valores atípicos
+
+
+La idea básica detrás del enfoque de clustering basada en la densidad se deriva de un método de agrupación intuitivo humano. Por ejemplo, al observar la figura siguiente, se pueden identificar fácilmente cuatro grupos junto con varios puntos de ruido, debido a las diferencias en la densidad de los puntos.
+
+![](http://www.sthda.com/sthda/RDoc/images/dbscan-idea.png)
+Como se ilustra en la figura anterior, los clústeres son regiones densas en el espacio de datos, separadas por regiones de menor densidad de puntos. En otras palabras, la densidad de puntos en un grupo es considerablemente mayor que la densidad de puntos fuera del cluster (“áreas de ruido”).
+
+DBSCAN se basa en esta noción intuitiva de "clústeres" y "ruido". La idea clave es que para cada punto de un grupo, la vecindad de un radio determinado debe contener al menos un número mínimo de puntos.
+
+## Algoritmo de DBSCAN
+
+El objetivo es identificar regiones densas, que pueden medirse por el número de objetos cercanos a un punto determinado.
+
+Se requieren dos parámetros importantes para DBSCAN: `épsilon (“eps”)` y `puntos mínimos (“MinPts”)`. El parámetro eps define el radio de vecindad alrededor de un punto x. Se llama la `epsilon-vecindad` de x. El parámetro MinPts es el número mínimo de vecinos dentro del radio "eps".
+
+Cualquier punto x en el conjunto de datos, con un recuento de vecinos mayor o igual a MinPts, se marca como `punto central`. Decimos que x es un `punto fronterizo`, si el número de sus vecinos es menor que MinPts, pero pertenece a la vecindad de algún punto central. Finalmente, si un punto no es ni central ni fronterizo, se le llama punto de ruido o valor atípico.
+
+La siguiente figura muestra los diferentes tipos de puntos (puntos centrales, fronterizos y atípicos) usando MinPts = 6. Aquí x es un punto central, y es un punto fronterizo y z es un ruido.
+
+![](http://www.sthda.com/sthda/RDoc/images/dbscan-principle.png)
+
+## DBSCAN en R
+
+```{r}
+#install.packages("fpc")
+library(fpc)
+dbscan_model <- fpc::dbscan(df, MinPts =  5, eps=0.15)
+fviz_cluster(dbscan_model, df, stand = FALSE, frame = FALSE, geom = "point")
+```
+```{r}
+dbscan_model
+```
+
+El algoritmo DBSCAN requiere que los usuarios especifiquen los valores de eps óptimos y el parámetro MinPts. En el código R anterior, utilizamos eps = 0,15 y MinPts = 5. Una limitación de DBSCAN es que es sensible a la elección de epsilon, en particular si los grupos tienen diferentes densidades. Si epsilon es demasiado pequeño, los grupos más dispersos se definirán como ruido. Si epsilon es demasiado grande, es posible que se fusionen grupos más densos. Esto implica que, si hay grupos con diferentes densidades locales, entonces un único valor epsilon puede no ser suficiente.
+
+```{r}
+dbscan_model <- fpc::dbscan(df, MinPts  =  5, eps=0.30)
+fviz_cluster(dbscan_model, df, stand = FALSE, frame = FALSE, geom = "point")
+
+dbscan_model <- fpc::dbscan(df, MinPts  =  5, eps=0.05)
+fviz_cluster(dbscan_model, df, stand = FALSE, frame = FALSE, geom = "point")
+```
+
+## Método para determinar el valor óptimo de eps.
+
+El método propuesto aquí consiste en calcular las k distancias de los vecinos más cercanos en una matriz de puntos. La idea es calcular el promedio de las distancias de cada punto a sus k vecinos más cercanos. El valor de k será especificado por el usuario y corresponde a MinPts.
+
+A continuación, estas k-distancias se trazan en orden ascendente. El objetivo es determinar la “rodilla”, que corresponde al parámetro eps óptimo. Una rodilla corresponde a un umbral donde se produce un cambio brusco a lo largo de la curva de distancia k.
+
+La función `kNNdistplot()` [en el paquete dbscan] se puede utilizar para dibujar el gráfico de distancias k:
+
+```{r}
+#install.packages("dbscan")
+library(dbscan)
+dbscan::kNNdistplot(df, k =  5)
+abline(h = 0.15, lty = 2)
+```
+
+```{r}
+dbscan_model <- fpc::dbscan(df, MinPts =  5, eps=0.15)
+predict.dbscan(dbscan_model,multishapes,multishapes) %>% unname()
+```
+
