@@ -1,0 +1,324 @@
+---
+title: "Keras en R"
+output:
+  html_document:
+    df_print: paged
+---
+```{r}
+library(tidyverse)
+```
+
+Keras es una API de alto nivel para construir y entrenar modelos de aprendizaje profundo. Se utiliza para la creación rápida de prototipos, la investigación avanzada y la producción, con tres ventajas clave:
+
+1. __Fácil de usar__:
+Keras tiene una interfaz simple y consistente optimizada para casos de uso comunes. Proporciona comentarios claros y procesables para los errores del usuario.
+2. __Modular__:
+Los modelos Keras se fabrican conectando bloques de construcción configurables, con pocas restricciones.
+3. __Fácil de extender__:
+Escriba bloques de construcción personalizados para expresar nuevas ideas para la investigación. Cree nuevas capas, funciones de pérdida y desarrolle modelos de última generación.
+
+# Instalación
+
+Primero hay que instalar el paquete de Keras para R desde GitHub.
+```{r}
+#devtools::install_github("rstudio/keras")
+```
+
+La interfaz de Keras para R utiliza el backend de [TensorFlow](https://www.tensorflow.org/) de forma predeterminada. Para instalar tanto la biblioteca central de Keras como el backend TensorFlow, hay que usar la función install_keras():
+
+```{r}
+library(keras)
+#install_keras()
+```
+
+Esto proporcionará la instalación predeterminada basada en CPU de Keras y TensorFlow. Si desea una instalación más personalizada, como por ejemplo para aprovechar las GPU NVIDIA, consulte la documentación de install_keras().
+
+# Construir Modelos Simples
+
+En Keras, y en el aprendizaje profundo en general, se ensamblan capas para construir modelos. Un modelo es (generalmente) un grafo de capas. El tipo de modelo más común es una pila de capas: el modelo secuencial.
+
+## Modelo Secuencial
+
+Los modelos secuenciales se utilizan para construir redes simples y totalmente conectadas (es decir, perceptrones multicapas). Se puede comenzar creando un modelo secuencial y luego agregando capas usando el operador de pipe (%>%). Se puede imprimir por consola los detalles del modelo creado usando la funcion summary().
+
+```{r}
+model <- keras_model_sequential()
+
+model %>% 
+  
+  # Agrega una capa densa (totalmente conectada) con 8 neuronas al modelo
+  # y una capa de entrada con 4 neuronas
+  layer_dense(units = 8, activation = 'relu', input_shape = 4) %>%
+  
+  # Agrega otra
+  layer_dense(units = 8, activation = 'relu') %>%
+  
+  # Agrega una capa softmax de salida con 3 neuronas
+  layer_dense(units = 3, activation = 'softmax')
+
+summary(model)
+```
+
+## Configurar las capas.
+
+Una capa es un conjunto de *neuronas*, a menudo llamadas nodos o unidades. Reciben información de algunos otros nodos, o de una fuente externa y calcula una salida. Cada entrada tiene un peso asociado (`w`), que se asigna en función de su importancia relativa a otras entradas. El nodo aplica una función `f` a la suma ponderada de sus entradas como se muestra a continuación:
+
+![](https://ujwlkarn.files.wordpress.com/2016/08/screen-shot-2016-08-09-at-3-42-21-am.png?w=1136&h=606)
+
+La neurona anterior toma entradas numéricas `X1` y `X2` y tiene pesos `w1` y `w2` asociados con esas entradas. Además, hay otra entrada `1` con el peso `b` (llamado *bias*) asociado a ella.
+
+La salida `Y` de la neurona se calcula como se muestra en la figura. La función `f` se llama *función de activación*. Una función de activación toma un número y realiza una operación matemática determinada. 
+
+Hay varias funciones de activación que se pueden encontrar en la práctica, entre ellas las más comunes son:
+
+* `Sigmoide`: toma una entrada de valor real y la aplasta para que oscile entre 0 y 1
+
+* `ReLU`: ReLU significa *unidad lineal rectificada*. Toma una entrada de valor real y la umbraliza a cero (reemplaza los valores negativos con cero)
+
+![](https://miro.medium.com/max/1742/1*XxxiA0jJvPrHEJHD4z893g.png)
+
+Hay muchos tipos de capas disponibles con algunos parámetros de constructor comunes:
+
+* __activation__: establece la función de activación para la capa. Por defecto, no se aplica ninguna activación.
+* __kernel_initializer__ y __bias_initializer__: los esquemas de inicialización que crean aleatoriamente los pesos de la capa (kernel y bias). Por defecto es el [inicializador uniforme Glorot](https://tensorflow.rstudio.com/keras/reference/initializer_glorot_uniform.html).
+* __kernel_regularizer__ y __bias_regularizer__: los esquemas de regularización se aplican a los pesos de la capa (kernel and bias) para evitar el [sobreajuste]() en la red. Como por ejemplo la regularización L1 o L2. Por defecto, no se aplica ningún tipo de regularización.
+
+Las capas más comunes, y las que vamos a usar en este curso, son las densas (totalmente conectadas) y a continuación hay algunos ejemplos para construirlas.
+
+```{r echo=TRUE}
+# Capa densa de 64 neuronas con función de activación sigmoide:
+layer_dense(units = 64, activation ='sigmoid')
+
+# Capa densa de 64 neuronas con regularización L1 con un factor de 0.01
+layer_dense(units = 64, kernel_regularizer = regularizer_l1(0.01))
+
+# Capa densa de 64 neuronas con regularización L2 con un factor de 0.01
+layer_dense(units = 64, bias_regularizer = regularizer_l2(0.01))
+
+# Capa densa de 64 neuronas con los pesos inicializados mediante una matriz ortogonal aleatoria
+layer_dense(units = 64, kernel_initializer = 'orthogonal')
+
+# Capa densa de 64 neuronas con un bias inicializado en 2   
+layer_dense(units = 64, bias_initializer = initializer_constant(2.0))
+```
+
+# Entrenar los modelos
+
+Las redes neuronales se entrenan siguiendo el gradiente descendiente sobre una función de pérdida o de costo y modificando los pesos de las conexiones a través del algoritmo de back-propagation. 
+
+## Configurar el entrenamiento con compile() 
+
+Después de construir el modelo, hay que configurar su proceso de aprendizaje llamando al método compile(). Este recibe tres argumentos importantes:
+
+* __optimizer__: este objeto es el encargado de llevar adelante el proceso de gradiente descendiente y backpropagation. Los algoritmos más usados son [adam](https://machinelearningmastery.com/adam-optimization-algorithm-for-deep-learning/), [rmsprop](https://towardsdatascience.com/understanding-rmsprop-faster-neural-network-learning-62e116fcf29a) o [sgd](https://en.wikipedia.org/wiki/Stochastic_gradient_descent).
+* __loss__: función de pérdida que quiere optimizarse. Las opciones comunes incluyen error cuadrático medio(mse), [categorical_crossentropy y binary_crossentropy](https://gombru.github.io/2018/05/23/cross_entropy_loss/).
+* __metrics__: se utilizan para monitorear el entrenamiento. Generalmente se usa accuracy, precission o alguna similar.
+
+A continuación se muestran algunos ejemplos de configuración de entrenamiento de un modelo.
+
+```{r echo=TRUE}
+# Configura un modelo para regresión
+model %>% compile(
+  optimizer = 'adam',
+  loss = 'mse',           # mean squared error
+  metrics = list('mae')   # mean absolute error
+)
+
+# Configura un modelo para clasificación
+model %>% compile(
+  optimizer = optimizer_rmsprop(lr = 0.01),
+  loss = "categorical_crossentropy",
+  metrics = list("categorical_accuracy")
+)
+```
+
+## Datos de Entrada
+
+Se puede entrenar modelos keras directamente sobre matrices y vectores de R (posiblemente creados a partir de data.frames). En el caso de que la red sea para clasificación, la columna de etiquetas debe estar en formato one_hot. Es decir, debe haber una columna por cada clase y se debe marcar con un 1 la clase correcta y con un 0 todas las demás.
+
+```{r echo=TRUE}
+library(varhandle)
+library(tidymodels)
+
+
+set.seed(42)
+
+data_split <- iris %>% initial_split(prop = 3/4)
+train_data <- training(data_split)
+test_data  <- testing(data_split)
+
+Xtrain <- train_data %>% select(-c(Species)) %>% as.matrix()
+Xtest <- test_data %>% select(-c(Species)) %>% as.matrix()
+Ytrain <- train_data %>% pull(Species) %>% to.dummy("label")
+Ytest <- test_data %>% pull(Species) %>% to.dummy("label")
+
+```
+
+## Entrenar con el método fit()
+Para entrenar la red se usa el método fit(). Éste toma tres importantes parámetros:
+
+* __epochs__: el entrenamiento se estructura en epochs. Una epoch es una iteración sobre todos los datos de entrada (esto se hace en lotes más pequeños).
+* __batch_size__: el modelo divide los datos de entrenamiento en lotes más pequeños e itera sobre estos lotes durante el entrenamiento. Este entero especifica el tamaño de cada lote. Tenga en cuenta que el último lote puede ser más pequeño si el número total de muestras no es divisible por el tamaño del lote. Esta separación en lotes está pensada para no tener que mantener el dataset entero en memoria durante todo le entrenamiento.
+* __validation_data__: al crear prototipos de un modelo, se desea supervisar fácilmente su rendimiento en algunos datos de validación. Pasar este argumento, una lista de características y etiquetas, permite que el modelo muestre la pérdida y las métricas de predicción para los datos pasados, al final de cada epoch.
+
+```{r}
+history <- model %>% fit(
+  Xtrain,
+  Ytrain,
+  epochs = 20,
+  batch_size = 32,
+  validation_data = list(Xtest, Ytest)
+)
+```
+
+Durante el entrenamiento en Rstudio se puede observar en el panel de viewer en la esquina inferior derecha un gráfico como el siguiente ![entrenamiento](./figuras/loss_y_val_loss.png)
+
+La curvas azules son los valores de la función de pérdida y el accuracy calculados sobre el conjunto de entrenamiento a medida que pasan las epochs.Las curvas verdes son las mismas métricas pero calculadas sobre los conjuntos de datos pasados como validation_data.
+
+Toda la información del entrenamiento que devuelve fit() fue asignada en la variable history. Esta información está almacenada en forma de lista con los siguientes elementos:
+
+* __params__: contiene los parámetros con los que se configuró el entrenamiento
+* __metrics__: contiene vectores con los valores de la función de pérdida y las métricas que se configuraron para cada epoch tanto en entrenamiento como en validación.
+
+```{r}
+print(history$params)
+print(history$metrics)
+```
+
+Se puede acceder a ellos directamente con el operador "$".
+
+```{r}
+print(history$params$epochs)
+plot(history$metrics$val_categorical_accuracy)
+```
+
+## Personalización del entrenamiento: Callbacks.
+
+Un callback es un conjunto de funciones que se aplicarán en etapas determinadas del procedimiento de entrenamiento. Se pueden usar para obtener una vista de los estados internos y las estadísticas del modelo durante el entrenamiento.
+
+Un callcack automatiza algunas tareas después de cada epoch que lo ayudan a tener controles sobre el proceso de entrenamiento. Esto incluye detener el entrenamiento cuando alcanza un cierto puntaje de accuracy/pérdida, guardar su modelo como un punto de control después de cada epoch exitosa, ajustar las tasas de aprendizaje a lo largo del tiempo y más. ¡Profundicemos en algunas funciones de callback!
+
+#### EarlyStopping
+
+Una forma de evitar el sobreajuste es terminar el entrenamiento temprano. La función EarlyStopping tiene varias métricas / argumentos que podes modificar para configurar cuándo debe detenerse el proceso de entrenamiento. Aquí hay algunas métricas relevantes:
+
+* __monitor__: valor que se supervisapara definir cuando frenar
+* __min_delta__: cambio mínimo en el valor monitoreado. Por ejemplo, min_delta = 1 significa que el proceso de entrenamiento se detendrá si el cambio absoluto del valor monitoreado es menor que 1
+* __patience__: número de epochs sin mejoría, después de lo cual se interrumpirá el entrenamiento
+* __restore_best_weights__: establezca esta métrica en True si queres mantener los mejores pesos una vez detenidos
+
+El siguiente ejemplo de código definirá una función EarlyStopping que rastrea el valor val_loss, detiene el entrenamiento si no hay cambios hacia val_loss después de 7 epochs y mantiene los mejores pesos una vez que el entrenamiento se detiene:
+
+```{r}
+callback1 <- callback_early_stopping(monitor = 'val_loss',
+                          min_delta = 0,
+                          patience = 7,
+                          verbose = 1,
+                          restore_best_weights = TRUE)
+```
+
+#### ModelCheckpoint
+ 
+Este callback guarda el modelo después de cada epoch. Algunas métricas relevantes son:
+
+* filepath: la ruta de archivo en la que queres guardar tu modelo
+* monitor: el valor que se supervisa
+* save_best_only: establezca esto en True si no desea sobrescribir el último mejor modelo
+* mode: auto, min o max. Por ejemplo, establece mode = 'min' si el valor monitoreado es val_loss y queres minimizarlo.
+
+```{r}
+callback2 <- callback_model_checkpoint("my_model",
+                             monitor='val_loss',
+                             mode='min',
+                             save_best_only=TRUE,
+                             verbose=1)
+```
+
+#### TensorBoard
+
+TensorBoard es una herramienta de visualización incluida con TensorFlow que te permite visualizar gráficos dinámicos de las métricas de entrenamiento y prueba de Keras, así como histogramas de activación para las diferentes capas del modelo.
+
+Se activa con un callback muy sencillo.
+```{r}
+callback3 <- callback_tensorboard(log_dir = './logs')
+```
+
+#### Utilización durante el entrenamiento
+
+```{r}
+model2 <- keras_model_sequential() %>% 
+  layer_dense(units = 8, activation = 'relu', input_shape = 4) %>%
+  layer_dense(units = 8, activation = 'relu') %>%
+  layer_dense(units = 3, activation = 'softmax')
+
+model2 %>% compile(
+  optimizer = optimizer_rmsprop(learning_rate = 0.01),
+  loss = "categorical_crossentropy",
+  metrics = list("categorical_accuracy")
+)
+
+history <- model2 %>% fit(
+  Xtrain,
+  Ytrain,
+  epochs = 100,
+  batch_size = 32,
+  callbacks = list(callback1, callback2, callback3),
+  validation_data = list(Xtest, Ytest)
+)
+```
+
+Entrenando con todos los epochs definidos anteriormente analicemos su funcionamiento. Para empezar podemos ver en la consola que se detuvo en la epoch 79 después de 7 epochs sin disminuir la función de pérdida de validación (Epoch 00079: early stopping). Además restauró los valores del mejor modelo como le dijimos (_Restoring model weights from the end of the best epoch. Epoch 00079: val_loss did not improve from 0.06983_)
+
+Por otro lado, el callback de checkpoint generó una nueva carpeta de nombre "my_model" que contiene el modelo con los mejores resultados (_Epoch 00072: val_loss improved from 0.07608 to 0.06983, saving model to /home/pablo/AM/aprendizajedemaquinas/L2/my_model_). Este modelo se puede volver a cargar mediante la función load_model_tf()
+
+```{r}
+saved_model <- load_model_tf("my_model")
+```
+
+Por último se puede acceder al tablero de tensorboard utilizando la siguiente llamada.
+
+```{r}
+tensorboard('D:/L2/logs')
+```
+
+Esto abre una ventana en el navegador web por defecto que se ve así ![tensorboard](./figuras/tensorboard.png)
+
+# Evaluar el modelo
+
+El método evaluate permite calcular la función de pérdida y todas las métricas con las que se configuró la red para un conjunto de datos en particular.
+
+```{r}
+saved_model %>% evaluate(Xtest, Ytest)
+```
+
+Con el método predict() se obtiene los valores de las neuronas de la capa de salida para un cierto conjunto de características de entrada. La clase predicha será la neurona con mayor valor.
+
+```{r}
+options(scipen=999)
+(output <- saved_model %>% predict(Xtest) %>% round(digits=7))
+```
+
+Para obtener directamente el valor de la clase predicha utilizamos el método predict_classes().
+
+```{r}
+(class_output <- saved_model %>% predict(Xtest) %>% k_argmax() %>% as.array())
+```
+
+Para poder comparar con las clases reales, debemos revertir la codificación one_hot.
+
+```{r}
+#vemos donde estan los unos
+unos <- which(Ytest==1, arr.ind = T)
+#solo nos interesan las columnas, pero van del 1 al 3, en vez del 0 al 2. Le restamos uno.
+(clases_true <- unos[,2] -1)
+```
+
+Ahora podemos generar matrices de confusión y todas sus métricas asociadas.
+
+```{r}
+library(mltest)
+
+(cm <- table(clases_true,class_output))
+ml_test(clases_true,class_output)
+```
+

@@ -1,0 +1,595 @@
+---
+author: "Pablo Marinozi"
+date: "30 de Abril, 2020"
+title: "Bias y Varianza"
+output:
+  html_document:
+    df_print: paged
+---
+
+# Introducción Teórica
+
+En el aprendizaje automático supervisado, un algoritmo aprende un modelo a partir de datos de entrenamiento. El objetivo de cualquier algoritmo de aprendizaje automático supervisado es estimar mejor la función de mapeo (f) para la variable de salida (Y) dados los datos de entrada (X). La función de mapeo a menudo se llama función objetivo porque es la función que un algoritmo supervisado de aprendizaje automático supervisado tiene como objetivo aproximar.
+
+El error de predicción para cualquier algoritmo de aprendizaje automático se puede dividir en tres partes:
+
+* Error de sesgo o bias
+* Error de varianza
+* Error irreducible
+
+El error irreducible, como su nombre lo indica, no se puede reducir independientemente del algoritmo utilizado. Es el error introducido desde el marco elegido del problema y puede ser causado por factores como variables desconocidas que influyen en la función de mapeo de las variables de entrada a la variable de salida.
+
+En este tutorial, nos centraremos en las dos partes en las que podemos influir con nuestros algoritmos de aprendizaje automático. El error de sesgo y el error de varianza. 
+
+### ¿Qué es el Bias o Sesgo?
+
+El bias son las suposiciones simplistas hechas por un modelo para hacer que la función objetivo sea más fácil de aprender. En general, los algoritmos lineales tienen un alto sesgo, lo que los hace rápidos de aprender y fáciles de entender, pero generalmente menos flexibles. A su vez, tienen un rendimiento predictivo más bajo en problemas complejos que no cumplen con los supuestos simplificadores del sesgo de los algoritmos.
+
+* __Bias Alto__: Simplifica demasiado el modelo y presta muy poca atención a los datos de entrenamiento. Conduce a un alto error tanto en los datos de entrenamiento como de prueba.
+* __Bias Bajo__: Simplifica el modelo lo suficiente como para que el modelo sea fácil de aprender sin generar demasiados errores.
+
+En modelos de deep learning estas suposiciones simplistas se hacen reduciendo la cantidad capas o la cantidad de neuronas por capa. De esta manera se le quita flexibilidad al modelo impidiendo que aprenda el patrón oculto en los datos.
+
+### ¿Qué es la varianza?
+
+La varianza es la parte del error en la estimación de la función objetivo que cambiaría si se utilizaran diferentes datos de entrenamiento.
+
+La función objetivo se estima a partir de los datos de entrenamiento mediante un algoritmo de aprendizaje automático, por lo que deberíamos esperar que el algoritmo tenga algo de varianza. Sin embargo, idealmente no debería cambiar demasiado de un conjunto de datos de entrenamiento al siguiente, lo que significa que el algoritmo es bueno para seleccionar el mapeo subyacente oculto entre las entradas y las variables de salida.
+
+* __Varianza Alta__: el número y los tipos de parámetros utilizados para caracterizar la función de mapeo están fuertemente influenciados por los detalles de los datos de entrenamiento. Sugiere cambios importantes en la estimación de la función objetivo al cambiar el conjunto de datos de entrenamiento.
+* __Varianza Baja__: ignora los detalles en el conjunto de entrenamiento y logra encontrar el mapeo subyacente oculto entre las entradas y las variables de salida
+
+En general, los algoritmos de aprendizaje profundo con muchos parámetros entrenables (ya sea por cantidad de capas o por cantidad de neuronas por capa) tienen mucha flexibilidad y, por lo tanto, una gran varianza. Como resultado, tales modelos funcionan muy bien en los datos de entrenamiento pero tienen altas tasas de error en los datos de prueba.
+
+### Compensación de bias-varianza
+
+El objetivo de cualquier algoritmo de aprendizaje automático supervisado es lograr un bajo sesgo y una baja varianza como se puede ver en la siguiente analogía con blancos.
+
+![](figuras/blancos.png)
+
+Se puede ver una tendencia general en los ejemplos de bias y varianza en redes neuronales.
+
+* Los modelos con pocas capas y neuronas tienen un sesgo alto pero una varianza baja.
+* Los modelos con muchas capas y neuronas tienen un sesgo bajo pero una varianza alta.
+
+![Compensación entre Bias y Varianza](./figuras/DiseccionError.png)
+
+La parametrización de los algoritmos de aprendizaje automático es a menudo una batalla para equilibrar el sesgo y la varianza.
+
+* Aumentar el sesgo disminuirá la varianza.
+* Aumentar la varianza disminuirá el sesgo.
+
+Hay una compensación entre estas dos preocupaciones y por esto, la elección de los algoritmosy la forma en que se elige configurarlos consiste en encontrar diferentes equilibrios en esta compensación para cada problema.
+
+### Underfitting y Overfitting
+
+En el aprendizaje supervisado, el __underfitting__ ocurre cuando un modelo no puede capturar el patrón subyacente de los datos. Estos modelos generalmente tienen __alto sesgo y baja varianza__. 
+
+En la práctica, puede ocurrir por dos motivos:
+
+* tenemos muy poca cantidad de datos para construir un modelo preciso.
+* el modelos es muy simple y no puede capturar los patrones complejos en los datos.
+
+Por otro lado, el __overfitting__ ocurre cuando nuestro modelo aprende el ruido de los datos en lugar de el patrón subyacente en los mismos. Estos modelos tienen __bajo sesgo y alta varianza__. 
+
+En la práctica, esto ocurre por dos motivos:
+
+* entrenamos demasiado nuestro modelo sobre un conjunto de datos ruidoso.
+* los modelos son demasiado complejos para ese problema en particular.
+
+# Verificación Pŕactica
+
+En la práctica, no podemos calcular los valores reales del error de sesgo y varianza porque no conocemos la función objetivo subyacente real. Sin embargo, como conceptos, el sesgo y la varianza proporcionan las herramientas para comprender el comportamiento de los algoritmos de aprendizaje automático en la búsqueda del rendimiento predictivo. Por lo tanto, en las siguientes secciones de este tutorial vamos a realizar diferentes experimentos sobre el dataset de FIFA utilizado en el L0 de manera de evaluar el bias y la varianza en un caso concreto.
+
+### Instalación de Keras
+
+Entre las librerias de Deep Learning mas utilizadas se encuentra Keras.
+
+Originalmente, Keras fue pensada como una librería para el framework de machine learning Tensorflow en el lenguaje de programación Python. Sin embargo, con el pasar del tiempo, se han creado varias interfaces para que Keras pueda ser utilizado en otros frameworks y/o lenguajes.
+
+Por lo tanto, usaremos la interfaz de Keras para R desde GitHub así:
+```{r}
+#install.packages("devtools")
+
+#devtools::install_github("rstudio/keras")
+```
+
+La interfaz Keras de R utiliza el motor de fondo TensorFlow de forma predeterminada. Para instalar tanto la biblioteca central de Keras como el backend TensorFlow, use la función install_keras ():
+
+```{r  echo=T, results='hide', message=F, warning=F}
+library(keras)
+#install_keras()
+library(tidyverse)
+library(magrittr)
+```
+
+Esto le proporcionará instalaciones predeterminadas de Keras basadas en CPU y TensorFlow. Si desea una instalación más personalizada, por ejemplo si desea aprovechar las GPU NVIDIA, consulte la documentación de install_keras().
+
+A partir de ahora se trabajará con código Keras sin ahondar mucho en el detalle de cómo funciona. Para una mejor comprensión de este punto dirigirse al [tutorial de Keras en R](./KerasEnR.nb.html) incluído en este laboratorio.
+
+### Preprocesamiento
+
+Al igual que en el laboratorio anterior, cargaremos el dataset fifa, ubicado en "../data/fifa.csv". Luego vamos a reducir las  distintas posiciones de los jugadores a 4 categorías como arqueros GK, defensores DEF, mediocampistas MID y delanteros FWD; cada categoría tiene una cierta distribución de las características físicas y mentales de los jugadores que la conforman.
+Carga el dataset y simplifica la columna Position
+```{r  echo=T, results='hide', message=F, warning=F}
+set.seed(1)
+data<-read_csv("../data/fifa.csv")
+x <- as.factor(data$Position)
+levels(x) <- list(GK  = c("GK"), 
+                  DEF = c("LWB","RWB", "LB", "CB", "RB", "LCB","RCB"),
+                  MID = c("LM","CDM","CM","CAM","RM","RCM","LCM","LAM","RAM","LDM","RDM"), 
+                  FWD = c("RW","LW","CF", "RF", "LF", "ST","LS","RS"))
+data <- mutate(data, Position = x)
+```
+
+EL objetivo es clasificar a los jugadores en su posición dentro del campo dependiendo de sus estadísticas de juego individuales y sus características físicas. Para eso vamos a eliminar las columnas irrelevantes como el club y la nacionalidad. Construir un dataset denominado dataClasification utilizando las columnas correspondientes al skill de los jugadores (55 a la 88) y ubicando en la ultima columna la clase a predecir "Position". Además, eliminaremos las filas con valores nulos.
+
+```{r}
+dataClasificacion <- data %>% select(c(-(1:54),-89,22)) %>% remove_missing()
+```
+
+Luego, separo en conjunto de testeo 30% (Xtest, Ytest) y entrenamiento 70% (Xtraining, Ytraining) utilizando la tecnica X (matriz de carcateristicas) e Y (matriz variables objetivos). Por último, debemos modificar el formato de los datos de entrada para que coincidan con el funcionamiento interno de TensorFlow. En nuestro caso es necesario transformar los dataframes de características (X) en matrices y los vectores de etiquetas deben estar en codificación **one_hot**. La codificación one_hot consiste en destinar una columna para cada clase, asignando un uno a la clase correcta y un 0 a todas las demás. Aunque pueda parecer engorroso, es la única manera de trabajar con matrices numéricas en lugar de con factores. La librería varhandle nos permite obtener las matrices one_hot de manera muy sencilla. 
+tOneHot)
+
+```{r}
+library(varhandle)
+library(tidymodels)
+
+
+data_split <- dataClasificacion %>% initial_split(prop = 3/4)
+train_data <- training(data_split)
+test_data  <- testing(data_split)
+
+Xtraining <- train_data %>% select(-c(Position)) %>% as.matrix()
+Xtest <- test_data %>% select(-c(Position)) %>% as.matrix()
+Ytraining <- train_data %>% pull(Position) %>% to.dummy("position")
+Ytest <- test_data %>% pull(Position) %>% to.dummy("position")
+```
+
+
+
+
+### Determinación de la complejidad óptima del modelo
+
+En la sección anterior, vimos que una mala elección de la arquietectura del modelo podría provocar underfiiting u overfitting. Por lo que en primera instancia vamos a comprobar si esto se cumple para nuestro problema.
+
+Vamos a crear 3 modelos de diferentes tamaños.
+
+Un modelo chico: 
+
+```{r}
+modelo_chico <- 
+  keras_model_sequential() %>%
+  layer_dense(units = 4, activation = "relu", input_shape = 34) %>%
+  layer_dense(units = 4, activation = "relu") %>%
+  layer_dense(units = 4, activation = "sigmoid")
+
+modelo_chico %>% compile(
+  optimizer = "adam",
+  loss = "binary_crossentropy",
+  metrics = list("accuracy")
+)
+
+modelo_chico %>% summary()
+```
+
+Un modelo mediano:
+
+```{r}
+modelo_mediano <- 
+  keras_model_sequential() %>%
+  layer_dense(units = 16, activation = "relu", input_shape = 34) %>%
+  layer_dense(units = 16, activation = "relu") %>%
+  layer_dense(units = 4, activation = "sigmoid")
+
+modelo_mediano %>% compile(
+  optimizer = "adam",
+  loss = "binary_crossentropy",
+  metrics = list("accuracy")
+)
+
+modelo_mediano %>% summary()
+```
+
+Y un modelo grande:
+
+```{r}
+modelo_grande <- 
+  keras_model_sequential() %>%
+  layer_dense(units = 512, activation = "relu", input_shape = 34) %>%
+  layer_dense(units = 512, activation = "relu") %>%
+  layer_dense(units = 4, activation = "sigmoid")
+
+modelo_grande %>% compile(
+  optimizer = "adam",
+  loss = 'binary_crossentropy',
+  metrics = list("accuracy")
+)
+
+modelo_grande %>% summary()
+```
+
+Entrenamos los 3 modelos.
+
+```{r eval=F, include=T}
+historial_mediano <- modelo_mediano %>% fit(
+  Xtraining,
+  Ytraining,
+  epochs = 500,
+  batch_size = 64,
+  validation_data = list(Xtest, Ytest),
+  verbose = 2
+)
+
+historial_chico <- modelo_chico %>% fit(
+  Xtraining,
+  Ytraining,
+  epochs = 500,
+  batch_size = 64,
+  validation_data = list(Xtest, Ytest),
+  verbose = 2
+)
+
+historial_grande <- modelo_grande %>% fit(
+  Xtraining,
+  Ytraining,
+  epochs = 500,
+  batch_size = 64,
+  validation_data = list(Xtest, Ytest),
+  verbose = 2
+)
+```
+
+Y comparamos los resultados.
+
+```{r eval=F, include=FALSE, echo=F}
+history2DF <- function(data,modelName, nepochs){
+  return( 
+    tibble(
+      epoc = 1:nepochs,
+      loss = data$metrics$loss,
+      accuracy = data$metrics$accuracy,
+      val_loss = data$metrics$val_loss,
+      val_accuracy = data$metrics$val_accuracy,
+      model = modelName)
+  )
+}
+
+historiales <- bind_rows(history2DF(historial_chico, "chico",500),
+                         history2DF(historial_mediano,"mediano",500),
+                         history2DF(historial_grande, "grande",500)
+                         ) 
+
+historiales$model <- factor(historiales$model, levels = c("chico","mediano","grande"))
+
+colors <- c("Entrenamiento" = "blue", "Prueba" = "green")
+
+
+ggplot(data=historiales, mapping=aes(x=epoc)) +
+  geom_point(aes(y=accuracy,col="Entrenamiento")) + geom_line(aes(y=accuracy,col="Entrenamiento")) +
+  geom_point(aes(y=val_accuracy,col="Prueba")) + geom_line(aes(y=val_accuracy,col="Prueba")) +
+  facet_wrap(~model,ncol=3) + theme(axis.text.x = element_text(angle = 60),legend.position = "bottom") + 
+  labs(subtitle="Proceso de Entrenamiento de 3 modelos con diferente complejidad",y="error", x="epoch") + scale_color_manual(values = colors)
+
+ggplot(data=historiales, mapping=aes(x=epoc)) +
+geom_point(aes(y=accuracy),col="blue") + geom_line(aes(y=accuracy),col="blue") +
+  geom_point(aes(y=val_accuracy),col="green") + geom_line(aes(y=val_accuracy),col="green") +
+  facet_wrap(~model,ncol=3) + theme(axis.text.x = element_text(angle = 60))
+```
+
+![](./figuras/Rplot.png)
+
+![](./figuras/accuracyOverfiiting.png)
+
+En los gráficos anteriores se puede observar que se cumplen las reglas que se dieron en la intuición teórica. EL modelo chico no tiene la flexibilidad suficiente para encontrar el patrón subyacente en los datos y el modelo grande es demasiado flexible y comienza a ajustarse al ruido.
+
+Haciendo caso a estos patrones trataremos de encontrar el tamaño ideal del modelo incrementando iterativamente la cantidad de neuronas por capa.
+
+```{r}
+#disminuyo el tamaño del dataset para reducir el tiempo de entrenamiento
+dataK <- dataClasificacion[sample(nrow(dataClasificacion),600),]
+indices<-sample(nrow(dataK),0.7*nrow(dataK))
+Xtraining <- dataK[indices,] %>% select(-c(Position))
+Ytraining <- dataK$Position[indices]
+Xtest <- dataK[-indices,] %>% select(-c(Position))
+Ytest <- dataK$Position[-indices]
+
+library(varhandle)
+Xtraining %<>% as.matrix()
+Xtest %<>% as.matrix()
+YtrainingOneHot <- to.dummy(Ytraining,"position")
+YtestOneHot <- to.dummy(Ytest,"position")
+```
+  
+```{r eval=F, include=T}
+K <- seq(0,12,2)
+loss <- c()
+val_loss <- c()
+acc <- c()
+val_acc <- c()
+for(k in K){
+  modelo_cambiante <- 
+    keras_model_sequential() %>%
+    layer_dense(units = 2^k, activation = "relu", input_shape = 34) %>%
+    layer_dense(units = 2^k, activation = "relu") %>%
+    layer_dense(units = 4, activation = "sigmoid")
+  
+  modelo_cambiante %>% compile(
+    optimizer = "adam",
+    loss = "binary_crossentropy",
+    metrics = list("accuracy")
+  )
+  
+  n_history <- modelo_cambiante %>% fit(
+    Xtraining,
+    YtrainingOneHot,
+    epochs = 400,
+    batch_size = 16,
+    validation_data = list(Xtest, YtestOneHot),
+    verbose = 2
+  )
+  loss <- c(loss,(modelo_cambiante %>% evaluate(Xtraining,YtrainingOneHot))$loss)
+  val_loss <- c(val_loss,(modelo_cambiante %>% evaluate(Xtest, YtestOneHot))$loss)
+  acc <- c(acc,(modelo_cambiante %>% evaluate(Xtraining,YtrainingOneHot))$accuracy)
+  val_acc <- c(val_acc,(modelo_cambiante %>% evaluate(Xtest, YtestOneHot))$accuracy)
+}
+```
+
+```{r eval=F, include=FALSE, echo=F}
+losses <- tibble(K=K[1:4],loss=loss,val_loss=val_loss,accuracy = acc,val_accuracy=val_acc)
+ggplot(data=losses, mapping=aes(x=K)) +
+  geom_point(aes(y=loss),col="blue") + geom_smooth(aes(y=loss),col="blue") +
+  geom_point(aes(y=val_loss),col="green") + geom_smooth(aes(y=val_loss),col="green")  +
+  labs(title="Bias vs Varianza", x="Neuronas por capa", y="Error") +
+  scale_x_continuous(labels=2^K,breaks=K)
+```
+
+![](./figuras/Rplot03.png)
+
+Analizando este gráfico vemos que se asemeja bastante al gráfico de la compensación entre el bias y la varianza. A medida que disminuye el sesgo, aumentando la complejidad, el error de entrenamiento disminuye. Sin embargo, el aumento de la complejidad del modelo también incrementa la varianza haciendo que el error de testeo (verde) vuelva a incrementar.
+
+La conclusión es que para este dataset, la mejor compensación entre bias y varianza nos la da el modelo con 16 neuronas por capa.
+
+
+### Determinación de la cantidad de datos necesarios para entrenamiento
+
+En la introducción teórica, vimos que un dataset muy pequeño podría provocar underfitting. Por lo tanto, a continuación vamos a comprobar si esto se cumple para nuestro problema.
+
+La idea es entrenar el modelo de tamaño óptimo de la sección anterior con distintos tamaños de conjuntos de entrenamiento para ver cuándo convergen los errores de entrenamiento y prueba. 
+
+```{r eval=FALSE, include=TRUE}
+fragmentoTrain <- 10
+N <- fragmentoTrain*1:40
+loss <- c()
+val_loss <- c()
+for(n in N){
+  set.seed(3)
+  indicesN <- indices<-sample(nrow(Xtraining),n)
+  x <- Xtraining[indicesN,]
+  y <- YtrainingOneHot[indicesN,]
+  
+  modelo_optimo <- 
+    keras_model_sequential() %>%
+    layer_dense(units = 16, activation = "relu", input_shape = 34) %>%
+    layer_dense(units = 16, activation = "relu") %>%
+    layer_dense(units = 4, activation = "sigmoid")
+  
+  modelo_optimo %>% compile(
+    optimizer = "adam",
+    loss = "binary_crossentropy",
+    metrics = list("accuracy")
+  )
+  
+  n_history <- modelo_optimo %>% fit(
+    x,
+    y,
+    epochs = 50, #ponemos pocas epochs para no extender demasiado el tiempo de ejecución
+    batch_size = as.integer(n/5),
+    callbacks = callback_early_stopping(monitor = 'val_loss',
+                          min_delta = 0,
+                          patience = 10,
+                          verbose = 1,
+                          restore_best_weights = TRUE),
+    validation_data = list(Xtest, YtestOneHot),
+    verbose = 2
+  )
+  loss <- c(loss,(baseline_model %>% evaluate(x,y))$loss)
+  val_loss <- c(val_loss,(baseline_model %>% evaluate(Xtest, YtestOneHot))$loss)
+}
+```
+
+```{r eval=FALSE, include=FALSE}
+losses <- tibble(N=N,loss=loss,val_loss=val_loss)
+p20 <- ggplot(data=losses, mapping=aes(x=N)) +
+  geom_point(aes(y=loss),col="blue") + geom_smooth(aes(y=loss),col="blue") +
+  geom_point(aes(y=val_loss),col="green") + geom_smooth(aes(y=val_loss),col="green") 
+```
+
+El resultado es el siguiente.
+
+![](./figuras/CurvasAprendizaje50.png)
+
+Vemos que efectivamente, agregar datos de entrenamiento reduce el error de testeo evitando el underfitting.  También vemos que llega un punto, dependiendo de la varianza de los datos, que el error de testeo convergió y seguir agregando datos no va a mejorar los resultados.
+
+### Evitar Overfitting por entrenamiento prolongado
+
+Encontrar la arquitectura óptima de un modelo de deep learning puede ser un proceso demandante computacionalmente. Por lo que a veces se recurren a otras técnicas más simples para evitar el overfitting producido por la alta varianza del modelo. A continuación les presentamos algunas. 
+
+#### Regularización de pesos de la red
+
+Es posible que esté familiarizado con el principio de Navaja de Occam: dadas dos explicaciones para algo, la explicación más probable es que sea la más simple, la que hace la menor cantidad de suposiciones. Esto también se aplica a los modelos aprendidos por las redes neuronales: dados algunos datos de entrenamiento y una arquitectura de red, existen múltiples conjuntos de valores de pesos (modelos múltiples) que podrían explicar los datos, y los modelos más simples tienen menos probabilidades de sobreajustarse que los complejos.
+
+Un "modelo simple" en este contexto es un modelo donde la distribución de los valores de los parámetros tiene menos entropía (o un modelo con menos parámetros en total, como vimos en las secciones anteriores). Por lo tanto, una forma común de mitigar el sobreajuste es imponer restricciones a la complejidad de una red al obligar a sus pesos a tomar solo valores pequeños, lo que hace que la distribución de los valores de peso sea más "regular". Esto se llama "regularización de pesos", y se realiza agregando a la función de pérdida de la red un costo asociado con tener grandes pesos. 
+
+Este costo viene en dos opciones:
+
+* __Regularización L1__: donde el costo agregado es proporcional al valor absoluto de los coeficientes de pesos (es decir, a lo que se llama la "norma L1" de los pesos).
+
+* __Regularización de L2__: donde el costo agregado es proporcional al cuadrado del valor de los coeficientes de los pesos (es decir, a lo que se llama la "norma L2" de los pesos). 
+
+En Keras, la regularización de peso se agrega al pasar instancias de regularizador de peso a las capas. Agreguemos ahora la regularización de peso L2 al modelo grande.
+
+```{r eval=FALSE, include=T}
+l2_model <- 
+  keras_model_sequential() %>%
+  layer_dense(units = 512, activation = "relu", input_shape = 34,
+              kernel_regularizer = regularizer_l2(l = 0.001)) %>%
+  layer_dense(units = 512, activation = "relu",
+              kernel_regularizer = regularizer_l2(l = 0.001)) %>%
+  layer_dense(units = 4, activation = "sigmoid")
+
+l2_model %>% compile(
+  optimizer = "adam",
+  loss = "binary_crossentropy",
+  metrics = list("accuracy")
+)
+
+l2_history <- l2_model %>% fit(
+  Xtraining,
+  YtrainingOneHot,
+  epochs = 500,
+  batch_size = 64,
+  validation_data = list(Xtest, YtestOneHot),
+  verbose = 2
+)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+historiales2 <- bind_rows(history2DF(historial_grande,"grande",500),history2DF(l2_history,"grande_l2",500))
+
+colors <- c("Entrenamiento" = "blue", "Prueba" = "green")
+
+ggplot(data=historiales2, mapping=aes(x=epoc)) +
+  geom_point(aes(y=loss,col="Entrenamiento")) + geom_line(aes(y=loss,col="Entrenamiento")) +
+  geom_point(aes(y=val_loss,col="Prueba")) + geom_line(aes(y=val_loss,col="Prueba")) +
+  facet_wrap(~model,ncol=3) + theme(axis.text.x = element_text(angle = 60),legend.position = "bottom") + 
+  labs(title="Efecto de la Regularización de pesos",y="error", x="epoch") + scale_color_manual(values = colors)
+
+
+
+ggplot(data=historiales2, mapping=aes(x=epoc)) +
+  geom_point(aes(y=accuracy,col="Entrenamiento")) + geom_line(aes(y=accuracy,col="Entrenamiento")) +
+  geom_point(aes(y=val_accuracy,col="Prueba")) + geom_line(aes(y=val_accuracy,col="Prueba")) +
+  labs(title="Efecto de la Regularización de pesos",y="error", x="epoch") +
+  facet_wrap(~model,ncol=3) + theme(axis.text.x = element_text(angle = 60),legend.position = "bottom") + 
+  labs(title="Efecto de la Regularización de pesos",y="accuracy", x="epoch") +  scale_color_manual(values = colors)
+
+
+```
+
+![](./figuras/Rplot04.png)
+
+![](./figuras/Rplot05.png)
+
+Vemos que con agregar una simple linea a cada capa podemos obtener resultados sorprendentes sin tener que emprender el computacionalmente demandante proceso de encontrar la arquitectura de red óptima.
+
+#### Dropout
+
+El dropout es una de las técnicas de regularización más efectivas y más utilizadas para redes neuronales, desarrollada por Hinton y sus estudiantes en la Universidad de Toronto. El dropout, aplicado a una capa, consiste en "abandonar" aleatoriamente (es decir, poner a cero) una serie de valores de salida de la capa durante el entrenamiento. Digamos que una capa dada normalmente habría devuelto un vector [0.2, 0.5, 1.3, 0.8, 1.1] para una muestra de entrada dada durante el entrenamiento; después de aplicar el dropout, este vector tendrá unas pocas entradas cero distribuidas al azar, por ejemplo [0, 0,5, 1,3, 0, 1,1]. La "tasa de dropout" es la fracción de las características que se están poniendo a cero; Por lo general, se establece entre 0.2 y 0.5. En el momento del testeo, no se eliminan unidades y, en cambio, los valores de salida de la capa se reducen en un factor igual a la tasa de dropout, para equilibrar el hecho de que hay más unidades activas que en el tiempo de entrenamiento.
+
+En Keras, puede introducir el dropout en una red a través de layer_dropout, que se aplica a la salida de la capa justo antes.
+
+```{r eval=FALSE, include=T}
+dropout_model <- 
+  keras_model_sequential() %>%
+  layer_dense(units = 512, activation = "relu", input_shape = 34) %>%
+  layer_dropout(0.5) %>%
+  layer_dense(units = 512, activation = "relu") %>%
+  layer_dropout(0.5) %>%
+  layer_dense(units = 4, activation = "sigmoid")
+
+dropout_model %>% compile(
+  optimizer = "adam",
+  loss = 'binary_crossentropy',
+  metrics = list("accuracy")
+)
+
+dropout_history <- dropout_model %>% fit(
+  Xtraining,
+  YtrainingOneHot,
+  epochs = 500,
+  batch_size = 64,
+  validation_data = list(Xtest, YtestOneHot),
+  verbose = 2
+)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+historiales3 <- bind_rows(history2DF(historial_grande,"grande",500),history2DF(dropout_history,"grande_dropout",500))
+
+ggplot(data=historiales3, mapping=aes(x=epoc)) +
+  geom_point(aes(y=loss,col="Entrenamiento")) + geom_line(aes(y=loss,col="Entrenamiento")) +
+  geom_point(aes(y=val_loss,col="Prueba")) + geom_line(aes(y=val_loss,col="Prueba")) +
+  facet_wrap(~model,ncol=3) + theme(axis.text.x = element_text(angle = 60),legend.position = "bottom") + 
+  labs(title="Efecto del Dropout",y="error", x="epoch") + scale_color_manual(values = colors)
+
+
+
+ggplot(data=historiales3, mapping=aes(x=epoc)) +
+  geom_point(aes(y=accuracy,col="Entrenamiento")) + geom_line(aes(y=accuracy,col="Entrenamiento")) +
+  geom_point(aes(y=val_accuracy,col="Prueba")) + geom_line(aes(y=val_accuracy,col="Prueba")) +
+  labs(title="Efecto de la Regularización de pesos",y="error", x="epoch") +
+  facet_wrap(~model,ncol=3) + theme(axis.text.x = element_text(angle = 60),legend.position = "bottom") + 
+  labs(title="Efecto del Dropout",y="accuracy", x="epoch") +  scale_color_manual(values = colors)
+```
+
+![](./figuras/Rplot06.png)
+![](./figuras/Rplot07.png)
+
+#### Cortar el entrenamiento
+
+Una solución más simple incluso es detener el entrenamiento cuando se detecta que no ha habido una mejor a en el error de prueba durante mucho tiempo. Esto en Keras puede ser implementado mediante el callback_early_stopping.
+
+```{r eval=FALSE, include=T}
+modelo_grande_early <- 
+  keras_model_sequential() %>%
+  layer_dense(units = 512, activation = "relu", input_shape = 34) %>%
+  layer_dense(units = 512, activation = "relu") %>%
+  layer_dense(units = 4, activation = "sigmoid")
+
+modelo_grande_early %>% compile(
+  optimizer = "adam",
+  loss = 'binary_crossentropy',
+  metrics = list("accuracy")
+)
+
+early_history <- modelo_grande_early %>% fit(
+  Xtraining,
+  YtrainingOneHot,
+  epochs = 500,
+  batch_size = 64,
+  callbacks = callback_early_stopping(monitor = 'val_loss', #métrica monitoreada
+                          min_delta = 0, #cambio minimo para considerarlo mejora
+                          patience = 20, #cantidad de epochs que espera por una mejora
+                          verbose = 1,
+                          restore_best_weights = TRUE),
+  validation_data = list(Xtest, YtestOneHot),
+  verbose = 2
+)
+```
+
+```{r eval=FALSE, include=FALSE}
+historiales4 <- bind_rows(history2DF(historial_grande,"grande",500),history2DF(early_history,"grande_early_stopping",45))
+ggplot(data=historiales4, mapping=aes(x=epoc)) +
+  geom_point(aes(y=loss,col="Entrenamiento")) + geom_line(aes(y=loss,col="Entrenamiento")) +
+  geom_point(aes(y=val_loss,col="Prueba")) + geom_line(aes(y=val_loss,col="Prueba")) +
+  facet_wrap(~model,ncol=3,scales = "free_x") + theme(axis.text.x = element_text(angle = 60),legend.position = "bottom") + 
+  labs(title="Efecto de Early Stopping",y="error", x="epoch") + scale_color_manual(values = colors)
+
+
+
+ggplot(data=historiales4, mapping=aes(x=epoc)) +
+  geom_point(aes(y=accuracy,col="Entrenamiento")) + geom_line(aes(y=accuracy,col="Entrenamiento")) +
+  geom_point(aes(y=val_accuracy,col="Prueba")) + geom_line(aes(y=val_accuracy,col="Prueba")) +
+  facet_wrap(~model,ncol=3,scales = "free_x") + theme(axis.text.x = element_text(angle = 60),legend.position = "bottom") + 
+  labs(title="Efecto de Early Stopping",y="accuracy", x="epoch") + scale_color_manual(values = colors)
+```
+
+![](./figuras/Rplot08.png)
+
+![](./figuras/Rplot09.png)
+
+Usando este método podemos frenar el overfitting antes de que ocurra y a la vez ahorrarnos mucho tiempo de entrenamiento. Sin embargo, hay que tener mucho cuidado al elegir la cantidad de epochs que vamos a esperar a que el modelo mejore antes de cortar; ya que puede ocurrir que el modelo se estanque por algunas epochs y luego comience a subir de nuevo. 
+

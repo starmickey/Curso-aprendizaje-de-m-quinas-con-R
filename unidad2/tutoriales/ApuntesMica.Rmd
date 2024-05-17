@@ -1,0 +1,18 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Valores de tablas
+
+**Loss:** error en predicciones sobre el conjunto de entrenamiento. **val_loss:** error en predicciones sobre el conjunto de testeo.
+
+**accurancy:** porcentaje de asersiones de las predicciones sobre el conjunto de entrenamiento. **val_accurancy:** porcentaje de asersiones de las predicciones sobre el conjunto de testeo.
+
+El accurancy es inversamente proporcional al loss
+
+## Comportamiento del sistema
+
+**under fitting:** las curvas de *loss* y *val_loss* detienen su decrecimiento. El aumentar la complejidad del modelo no mejora las predicciones.
+
+**over fitting:** las curvas de *loss* y *val_loss* se alejan, disminuyéndose el *loss* y aumentando el *val_loss*
