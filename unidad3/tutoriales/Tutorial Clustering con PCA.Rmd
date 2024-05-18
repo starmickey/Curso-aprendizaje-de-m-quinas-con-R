@@ -23,11 +23,13 @@ El `Clustering` es una forma de aprendizaje automático *`no supervisado`* en el
 
 El clustering funciona separando los casos de entrenamiento en función de las similitudes que pueden determinarse a partir de los valores de sus features. Quizás los dos enfoques de agrupación en clústeres más conocidos sean: `kmeans` y `dbscan`. En kmeans, buscamos dividir las observaciones en un número preespecificado de grupos. Por otro lado, en dbscan, no sabemos de antemano cuántos clusters queremos.
 
-Piénsalo de esta manera; Las características numéricas de una entidad determinada pueden considerarse como coordenadas vectoriales que definen la posición de la entidad en un espacio de n dimensiones. Lo que busca hacer un modelo de clustering es identificar grupos de entidades que están cerca unas de otras y al mismo tiempo separadas de otros grupos.
-
-The best way to learn about clustering is to try it for yourself, so that's what you'll do in this exercise.
+Piénsalo de esta manera: Las características numéricas de una entidad determinada pueden considerarse como coordenadas vectoriales que definen la posición de la entidad en un espacio de n dimensiones. Lo que busca hacer un modelo de clustering es identificar grupos de entidades que están cerca unas de otras y al mismo tiempo separadas de otros grupos.
 
 ## 1. Principal Component Analysis (PCA)
+
+El PCA es una técnica de reducción de un sistema de múltiples variables a uno más sismple con coordinadas distintas. Las variables nuevan se obtienen operando las originales. Suele utilizarse como parte del **análisis exploratorio de los datos**.
+
+### Caso práctico
 
 Echemos un vistazo a un conjunto de datos que contiene mediciones de diferentes especies de semillas de trigo.
 
@@ -41,9 +43,6 @@ seeds <- read_csv(file = "https://raw.githubusercontent.com/MicrosoftDocs/ml-bas
 # Print the first 10 rows of the data
 seeds %>% 
   slice_head(n = 5)
-
-
-
 ```
 
 En este tutorial, trabajaremos con las primeras 6 columnas de "características". Para fines de **trazado**, codifiquemos la columna *etiqueta* como categórica. Tidymodels proporciona una manera clara de excluir esta variable al ajustar un modelo a nuestros datos. Recuerde, estamos tratando con un aprendizaje no supervisado, que no utiliza valores de *etiqueta* previamente conocidos para entrenar un modelo.
@@ -57,7 +56,6 @@ seeds_select <- seeds %>%
 # View first 5 rows of the data
 seeds_select %>% 
   slice_head(n = 5)
-
 ```
 
 Como puede ver, ahora tenemos seis *características* para cada *observación* de la especie de una semilla. Entonces podrías interpretarlas como coordenadas que describen la ubicación de cada semilla en un espacio de seis dimensiones.
@@ -144,7 +142,7 @@ features_2d %>%
 
 ```
 
-Esperemos que pueda ver al menos dos, posiblemente tres, grupos de puntos de datos razonablemente distintos; pero aquí radica uno de los problemas fundamentales del clustering: sin etiquetas de clase conocidas, ¿cómo saber en cuántos clusters separar los datos?
+Esperemos que pueda ver al menos dos, posiblemente tres, grupos de puntos de datos razonablemente distintos; pero aquí radica uno de los problemas fundamentales del clustering: sin etiquetas de clase conocidas, **¿cómo saber en cuántos clusters separar los datos?**
 
 Una forma de intentar averiguarlo es utilizar una muestra de datos para crear una serie de modelos de clustering con un número creciente de clusters y medir con qué precisión están agrupados los data points dentro de cada grupo. Una métrica que se utiliza a menudo para medir esta compacidad es la *suma de cuadrados dentro del grupo* (WCSS), donde valores más bajos significan que los puntos de datos están más cerca. Luego puede trazar el WCSS para cada modelo.
 
@@ -195,7 +193,7 @@ tot.withins_df %>%
   geom_point(size = 2, color = "dodgerblue3")
 ```
 
-Buscamos **minimizar** la suma total de cuadrados dentro del cluster. El gráfico muestra una gran reducción en WCSS (es decir, mayor *compacidad*) a medida que el número de grupos aumenta de uno a dos, y una reducción adicional notable de dos a tres grupos. Después de eso, la reducción es menos pronunciada, lo que resulta en un "codo" 💪 en el gráfico en alrededor de tres grupos. Esta es una buena indicación de que hay dos o tres grupos de puntos de datos razonablemente bien separados.
+Buscamos **minimizar** la suma total de cuadrados dentro del cluster. El gráfico muestra una gran reducción en WCSS (es decir, mayor *compacidad*) a medida que el número de grupos aumenta de uno a dos, y una reducción adicional notable de dos a tres grupos. Después de eso, la reducción es menos pronunciada, lo que resulta en un "**codo**" 💪 en el gráfico en alrededor de tres grupos. Esta es una **buena indicación de que hay dos o tres grupos de puntos de datos razonablemente bien separados**.
 
 ## 2. K-Means Clustering
 
@@ -219,6 +217,8 @@ results %>%
 ```
 
 ```{r cluster_plot1}
+library(factoextra)
+
 # Plot km_cluster assignmnet on the PC data
 results %>% 
   ggplot(mapping = aes(x = PC1, y = PC2)) +
@@ -273,21 +273,22 @@ set.seed(123)
 km.res <- kmeans(df, 5, nstart = 25)
 fviz_cluster(km.res, df, frame = FALSE, geom = "point")
 ```
+
 Sabemos que hay cinco grupos en los datos, pero se puede ver que el método k-means identifica de manera incorrecta los cinco grupos.
 
 Este capítulo describe DBSCAN, un algoritmo de agrupamiento basado en densidad, presentado en Ester et al. 1996, que puede usarse para identificar grupos de cualquier forma en un conjunto de datos que contiene ruido y valores atípicos. DBSCAN significa agrupación espacial basada en densidad y aplicación con ruido.
 
 Las ventajas de DBSCAN son:
 
-     * A diferencia de K-means, DBSCAN no requiere que el usuario especifique la cantidad de clústeres que se generarán
-     * DBSCAN puede encontrar cualquier forma de grupos. El grupo no tiene por qué ser circular.
-     * DBSCAN puede identificar valores atípicos
-
+```         
+ * A diferencia de K-means, DBSCAN no requiere que el usuario especifique la cantidad de clústeres que se generarán
+ * DBSCAN puede encontrar cualquier forma de grupos. El grupo no tiene por qué ser circular.
+ * DBSCAN puede identificar valores atípicos
+```
 
 La idea básica detrás del enfoque de clustering basada en la densidad se deriva de un método de agrupación intuitivo humano. Por ejemplo, al observar la figura siguiente, se pueden identificar fácilmente cuatro grupos junto con varios puntos de ruido, debido a las diferencias en la densidad de los puntos.
 
-![](http://www.sthda.com/sthda/RDoc/images/dbscan-idea.png)
-Como se ilustra en la figura anterior, los clústeres son regiones densas en el espacio de datos, separadas por regiones de menor densidad de puntos. En otras palabras, la densidad de puntos en un grupo es considerablemente mayor que la densidad de puntos fuera del cluster (“áreas de ruido”).
+![](http://www.sthda.com/sthda/RDoc/images/dbscan-idea.png) Como se ilustra en la figura anterior, los clústeres son regiones densas en el espacio de datos, separadas por regiones de menor densidad de puntos. En otras palabras, la densidad de puntos en un grupo es considerablemente mayor que la densidad de puntos fuera del cluster (“áreas de ruido”).
 
 DBSCAN se basa en esta noción intuitiva de "clústeres" y "ruido". La idea clave es que para cada punto de un grupo, la vecindad de un radio determinado debe contener al menos un número mínimo de puntos.
 
@@ -311,6 +312,7 @@ library(fpc)
 dbscan_model <- fpc::dbscan(df, MinPts =  5, eps=0.15)
 fviz_cluster(dbscan_model, df, stand = FALSE, frame = FALSE, geom = "point")
 ```
+
 ```{r}
 dbscan_model
 ```
@@ -344,4 +346,3 @@ abline(h = 0.15, lty = 2)
 dbscan_model <- fpc::dbscan(df, MinPts =  5, eps=0.15)
 predict.dbscan(dbscan_model,multishapes,multishapes) %>% unname()
 ```
-
