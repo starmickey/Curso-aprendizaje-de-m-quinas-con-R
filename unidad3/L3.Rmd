@@ -25,6 +25,7 @@ fifa %>% nrow()
 # Recetas para clusterización
 
 ## Ejercicio 1
+
 Use la librería tidymodels para generar 2 recetas para preprocesar los datos de fifa para entrenar modelos de clustering.
 
 -   `receta_clustering`: preprocesa el dataset fifa con los siguientes pasos
@@ -34,12 +35,50 @@ Use la librería tidymodels para generar 2 recetas para preprocesar los datos de
 -   `receta_clustering_pca`: preprocesa el dataset fifa con los mismos pasos de la receta anterior, pero agregando
     -   aplica PCA para reducir la cantidad de features a las 2 componentes principales
 
+#### Crear dataset reducido
+
+```{r}
+columns <- c(
+  # Player data
+  "Name", "Height", "Weight", "Position",
+  # Skill features
+  "Crossing", "Finishing", "HeadingAccuracy",
+  "ShortPassing", "Volleys", "Dribbling",
+  "Curve", "FKAccuracy", "LongPassing",
+  "BallControl", "Acceleration", "SprintSpeed",
+  "Agility", "Reactions", "Balance", 
+  "ShotPower", "Jumping", "Stamina",
+  "Strength", "LongShots", "Aggression",
+  "Interceptions", "Positioning", "Vision",
+  "Penalties", "Composure", "Marking",
+  "StandingTackle", "SlidingTackle", "GKDiving",
+  "GKHandling", "GKKicking", "GKPositioning",
+  "GKReflexes"
+)
+
+fifa_reduced <- fifa %>% 
+  select(all_of(columns))
+
+fifa_reduced %>% head()
+
+# Check types
+# sapply(fifa_reduced, typeof)
+```
+
+#### Crear recetas
+
 ```{r pca_prep}
 library(tidymodels)
 
-receta_clustering 
+# Print out recipe
+receta_clustering <- recipe(~ ., data = fifa_reduced) %>% 
+  update_role(Name, Position, new_role = "ID") %>% 
+  step_normalize(all_predictors())
 
-receta_clustering_pca  
+receta_clustering_pca <- recipe(~ ., data = fifa_reduced) %>% 
+  update_role(Name, Position, new_role = "ID") %>% 
+  step_normalize(all_predictors()) %>% 
+  step_pca(all_predictors(), num_comp = 2, id = "pca")
 
 ```
 
@@ -48,7 +87,23 @@ receta_clustering_pca
 "Prepare" la `receta_clustering_pca` y grafique el porcentaje de varianza explicado por cada componente principal.
 
 ```{r variance}
-#inserte su código aquí
+# Estimate required statistcs 
+pca_estimates <- prep(receta_clustering_pca)
+
+# Examine how much variance each PC accounts for
+pca_estimates %>% 
+  tidy(id = "pca", type = "variance") %>% 
+  filter(str_detect(terms, "percent"))
+
+theme_set(theme_light())
+# Plot how much variance each PC accounts for
+pca_estimates %>% 
+  tidy(id = "pca", type = "variance") %>% 
+  filter(terms == "cumulative variance") %>% 
+  mutate(tot=max(value)) %>% 
+  ggplot(mapping = aes(x = component, y = value*100/tot)) +
+  geom_col(fill = "midnightblue", alpha = 0.7) +
+  ylab("% of total variance")
 ```
 
 ## Ejercicio 3
@@ -56,18 +111,47 @@ receta_clustering_pca
 "Hornee" la `receta_clustering_pca` y muestre en un gráfico de dispersión la posición de los jugadores en el espacio bidimensional compuesto por las dos componentes principales.
 
 ```{r pca_plot}
-#inserte su código aquí
+# Return preprocessed data using bake
+features_2d <- pca_estimates %>% 
+  bake(new_data = NULL)
+
+# Plot Position
+features_2d %>% 
+  ggplot(mapping = aes(x = PC1, y = PC2)) +
+  geom_point(aes(col = Position, shape = Position), size = 2) +
+  scale_color_manual(values = c("darkorange","purple","cyan4", "green"))
 ```
+
 # Kmeans con PCA
 
 ## Ejercicio 4
 
-Encuentre el mejor número de clusters para kmeans al clusterizar los datos horneados de `receta_clustering_pca`. 
+Encuentre el mejor número de clusters para kmeans al clusterizar los datos horneados de `receta_clustering_pca`.
 
 *Nota*: A la hora de entrenar el modelo, utilice los hiperparámetros `nstart`=10 e `iter.max`=100
 
 ```{r}
+# Eliminar los ids del dataframe
+features_2d_pc <- features_2d %>% select(PC1, PC2)
 
+get_clusters <- function(nclusters, data){
+  kmeans(x = data, centers = nclusters, nstart = 10, iter.max = 100)
+}
+
+# create a DF with WCSS of each group of clusters
+# WCSS = Within-cluster sums of squares
+wcss_df <- tibble(nclusters = 1:10) %>% 
+  mutate(
+    wcss = nclusters %>%
+      map(get_clusters, features_2d_pc) %>%
+      map_dbl(~.$tot.withinss)
+    )
+
+# Plot Total WCSS
+wcss_df %>% 
+ ggplot(mapping = aes(x = nclusters, y = wcss)) +
+ geom_line(size = 1.2, alpha = 0.5, color = "dodgerblue3") +
+ geom_point(size = 2, color = "dodgerblue3")
 
 ```
 
@@ -75,29 +159,56 @@ Encuentre el mejor número de clusters para kmeans al clusterizar los datos horn
 
 Ejecute kmeans con la cantidad de clusters elegida del ejercicio anterior y muestre los resultados en un gráfico usando `fviz_cluster`.
 
-
 ```{r}
+library(factoextra)
+
+# Cantidad de clusters = 3
+clusters <- kmeans(x = features_2d_pc, centers = 3, nstart = 10, iter.max = 100)
+
+fviz_cluster(clusters, features_2d_pc, frame = FALSE, geom = "point")
 
 ```
-
 ## Ejercicio 6
 
 Analice la distribución de la feature "Position" en los clusters y determine si puede encontrar alguna lógica en la clusterización hecha por kmeans.
 
+### RESPUESTA
+
+Se observa que el clúster 2 se corresponde con los Goal Keepers. En lo que respecta a los demás clústers, la agrupación no coincide totalmente con el resto de las posiciones. La mayoría de los miembros del cluster 3 son defensores, mas se incluye algunos mediocampistas y delanteros. DeEl clúster 1, por su parte, incluye miembros de estas tres categorías en una distribución más equitativa.
+
 ```{r}
-#inserte su código aquí
+# Add cluster prediction to the data set
+features_2d <- augment(clusters, features_2d_pc) %>%
+  mutate(cluster = .cluster) %>% 
+  select(cluster) %>% 
+  bind_cols(features_2d)
+
+# Plot Position vs Cluster
+features_2d %>% 
+  ggplot(mapping = aes(x = PC1, y = PC2)) +
+  geom_point(aes(shape = cluster, color = Position), size = 2, alpha = 0.8)
 ```
 
 # DBSCAN con PCA
 
 ## Ejercicio 7
 
-Encuentre el mejor valor de `eps` para DBSCAN al clusterizar los datos horneados de `receta_clustering_pca`. 
+Encuentre el mejor valor de `eps` para DBSCAN al clusterizar los datos horneados de `receta_clustering_pca`.
 
 *Nota*: Utilice `MinPts` = 5
 
+#### Respuesta
+
+eps = 0.4
+
 ```{r}
-#inserte su código aquí
+library(dbscan)
+
+# Plot distances between a point and its k closest neighbours
+dbscan::kNNdistplot(features_2d_pc, k = 5)
+
+# Sample line to show eps chosen
+abline(h = 0.4, lty = 2)
 ```
 
 ## Ejercicio 8
@@ -105,14 +216,25 @@ Encuentre el mejor valor de `eps` para DBSCAN al clusterizar los datos horneados
 Ejecute DBSCAN con los hiperparámetros elegidos en el ejercicio anterior y muestre los resultados en un gráfico usando `fviz_cluster`.
 
 ```{r}
-#inserte su código aquí
+library(fpc)
+dbscan_model <- fpc::dbscan(features_2d_pc, MinPts =  5, eps = 0.4)
+fviz_cluster(dbscan_model, features_2d_pc, stand = FALSE, frame = FALSE, geom = "point")
 ```
+
 ## Ejercicio 9
 
 Analice la distribución de la feature "Position" en los clusters y determine si puede encontrar alguna lógica en la clusterización hecha por dbscan.
 
+#### RESPUESTA
+
+En la gráfica podemos observar que, al sintetizarse al dataset a dos dimensiones, provocamos que los grupos correspondientes a las posiciones se superpongan. Por este motivo, tanto kmeans como DBSCAN son ineficientes para detectar las posiciones DEF, MID y FWD.
+
 ```{r}
-#inserte su código aquí
+# Plot Position
+features_2d %>% 
+  ggplot(mapping = aes(x = PC1, y = PC2)) +
+  geom_point(aes(col = Position, shape = Position), size = 2) +
+  scale_color_manual(values = c("darkorange","purple","cyan4", "green"))
 ```
 
 # Clustering sobre las features originales
@@ -122,18 +244,161 @@ Analice la distribución de la feature "Position" en los clusters y determine si
 Repita los pasos de los ejercicios anteriores para entrenar kmeans sobre los datos horneados de `receta_clustering`.
 
 ```{r}
-#inserte su código aquí
+# Obtener solo predictores numéricos
+fifa_predictors <- fifa_reduced %>% select(-Name, -Position)
+
+# Obtener clusters con Kmeans
+clusters_B <- kmeans(x = fifa_predictors, centers = 4, nstart = 10, iter.max = 100)
+
+# Graficar clusters
+fviz_cluster(clusters_B, features_2d_pc, frame = FALSE, geom = "point")
+
+```
+#### Evaluación de resultados
+
+Para analizar los resultados, creamos un dataframe que incluya las posiciones reales, las predichas (les asignamos un nombre para facilitar la comprensión) e incluso los PC1 y PC2 utilizados anteriormente para poder crear gráficas comparativas a los casos anteriores.
+
+```{r}
+positions <- c("FWD", "MID", "DEF", "GK")
+
+# Crear dataframe con Posiciones reales y predichas mediante los clusters
+fifa_predictions_B <- augment(clusters_B, fifa_predictors) %>% 
+  mutate(cluster = .cluster) %>% 
+  select(cluster) %>% 
+  bind_cols(fifa_reduced, features_2d_pc) %>% 
+  mutate(
+    cluster_name = positions[cluster]
+  )
+```
+
+A continuación, presentamos distintos métodos para analizar la calidad del agrupamiento.
+
+```{r}
+# Crear matriz de confusión
+real <- fifa_predictions_B$Position
+predicted <- fifa_predictions_B$cluster_name
+
+table(real, predicted)
+
+# CONCLUSIONES:
+#   Se acierta en la totalidad de las predicciones de GK
+#   Solo FWD obtiene más predicciones correctas que incorrectas
+```
+```{r}
+fifa_nrows <- fifa_predictions_B %>% nrow()
+accertions_nrows <- fifa_predictions_B %>% filter(Position == cluster_name) %>% nrow()
+
+# Obtenemos la probabilidad de que la predicción 
+accertions_rate <- accertions_nrows / fifa_nrows
+accertions_rate
+```
+```{r}
+# Probabilidades por combinación
+prediction_probability <- fifa_predictions_B %>%
+  group_by(Position, cluster_name) %>% 
+  summarise(
+    probability = n() / fifa_nrows
+  )
+prediction_probability
+```
+
+```{r}
+prediction_probability  %>% 
+  filter(Position == cluster_name) %>% 
+  mutate(
+    accertion_probability = probability
+  ) %>% 
+  select(Position, accertion_probability)
+```
+
+```{r}
+# Añadimos PC1 y PC2 al dataframe para utlizar los mismos ejes de coordenadas que en los gráficos anteriores
+mistaken %>% bind_rows(features_2)
+
+# Graficar posiciones de los errores
+mistaken %>%
+  ggplot(mapping = aes(x = PC1, y = PC2)) +
+  geom_point(mapping = aes(col = Position, shape = cluster_name)) +
+  geom_col(alpha = 0.7)
+
+# CONCLUSIONES: Se observa que los errores están distribuidos todo a lo largo del espectro
+# Los GK tienen una 
 ```
 
 # Profundizando el análisis de los jugadores de campo
 
 ## Ejercicio 11
 
-Dado que los arqueros son un conjunto tan compacto y separable, verifique si eliminarlos del dataset mejora la separación de kmeans. 
+Dado que los arqueros son un conjunto tan compacto y separable, verifique si eliminarlos del dataset mejora la separación de kmeans.
 
 Modifique la `receta_clustering_pca` para agregar un paso que filtre a los arqueros del dataset y repita todos los ejercicios asociados a kmeans. Determine si hay una mejora sustancial en la separación de las tres categorias de jugadores de campo.
 
 ```{r}
-#inserte su código aquí
+# Crear nueva receta
+receta_clustering_pca_C <- recipe(~ ., data = fifa_reduced) %>% 
+  update_role(Name, Position, new_role = "ID") %>% 
+  step_filter(Position != "GK") %>% 
+  step_normalize(all_predictors()) %>% 
+  step_pca(all_predictors(), num_comp = 2, id = "pca")
+
+pca_estimates_C <- prep(receta_clustering_pca_C)
+
+features_2d_C <- pca_estimates_C %>% 
+  bake(new_data = NULL)
+
+# Seleccionar solo datos numéricos para kmeans
+features_2d_pc_C <- features_2d_C %>% select(PC1, PC2)
+
+# Aplicar clustering para crear tres grupos
+clusters_C <- kmeans(x = features_2d_pc_C, centers = 3, nstart = 10, iter.max = 100)
+
+# Graficar grupos
+fviz_cluster(clusters_C, features_2d_pc_C, frame = FALSE, geom = "point")
+
+```
+```{r}
+# Crear dataframe con Posiciones reales y predichas mediante los clusters
+fifa_predictions_C <- augment(clusters_C, features_2d_pc_C) %>% 
+  mutate(cluster = .cluster) %>% 
+  select(cluster) %>% 
+  bind_cols(
+    fifa_reduced %>% filter(Position != "GK"),
+    features_2d_pc_C) %>% 
+  mutate(
+    cluster_name = positions[cluster]
+  )
+
+# Graficar Position vs Cluster
+fifa_predictions_C %>% 
+  ggplot(mapping = aes(x = PC1, y = PC2)) +
+  geom_point(aes(col = Position, shape = cluster_name), size = 2) +
+  scale_color_manual(values = c("darkorange","purple","cyan4", "green"))
+
+# CONCLUSIONES:
+#   Pareciera que hay buenas perdicciones para los sectores en que hay poco
+#   solapamiento de clusters. En las zonas de solapamiento hay errores.
 ```
 
+A continuación, presentamos distintos métodos para analizar la calidad del agrupamiento.
+
+```{r}
+# Crear matriz de confusión
+real_C <- fifa_predictions_C$Position
+predicted_C <- fifa_predictions_C$cluster_name
+
+table(real_C, predicted_C)
+
+# CONCLUSIONES:
+#   Se incrementó la acersión, especialmente de DEF.
+```
+```{r}
+fifa_nrows <- fifa_predictions_B %>% nrow()
+accertions_nrows_C <- fifa_predictions_C %>% filter(Position == cluster_name) %>% nrow()
+
+# Obtenemos la probabilidad de que la predicción 
+accertions_rate <- accertions_nrows_C / fifa_nrows
+accertions_rate
+
+# CONCLUSIÓN:
+#   Se incrementó la probabilidad de aserción en un 15% 
+```
