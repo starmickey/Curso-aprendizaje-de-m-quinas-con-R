@@ -1,12 +1,12 @@
 ---
-author: "Tu nombre va aquí"
-date: "28 de Abril, 2020"
+author: "Micaela Estrella"
+date: "30 de Mayo, 2024"
 title: "Aprendizaje de Máquinas 2020 L2-A"
 output:
   html_document:
     df_print: paged
 ---
-## CURVAS DE APRENDIZAJE y REGULARIZACIÓN
+# CURVAS DE APRENDIZAJE y REGULARIZACIÓN
 
 En este laboratorio utilizaremos un dataset de diagnostico de cáncer de mama a partir de características visuales de los tejidos nodulares.
 
@@ -14,7 +14,7 @@ En este laboratorio utilizaremos un dataset de diagnostico de cáncer de mama a 
 
 En este laboratorio estimaremos el diagnostico de cáncer de mama a partir de las características visuales como la forma, bordes, y otra informacion de la geometría de los nódulos. Tendremos en cuenta diferentes tipos de arquitecturas de redes y técnicas de entrenamiento y analizaremos sus curvas de error para poder determinar si el modelo elegido es adecuado.
 
-# Información del conjunto de datos:
+### Información del conjunto de datos:
 
 Las características se obtienen a partir de una imagen digitalizada de un aspirado con aguja fina, en ingles fine needle aspirate (FNA), de una masa mamaria. Describen las características de los núcleos celulares presentes en la imagen.
 
@@ -22,7 +22,7 @@ Esta base de datos también está disponible a través del servidor ftp UW CS:
 ftp ftp.cs.wisc.edu
 cd math-prog/cpo-dataset/machine-learn/WDBC/
 
-# Dataset
+### Dataset
 
 Esta base de datos fue creada a partir de datos reales para identificar nódulos de tejido, basándose en las características visuales de imágenes. El conjunto de datos consta de 569 muestras y 32 características.
 
@@ -65,11 +65,14 @@ contour
 Para observar de mejor manera el comportamiento de las curvas de aprendizaje, se ha reducido el dataset original. Donde se han eliminado las columnas correspondientes a las características: (area_mean, area_se, texture_mean, concavity_worst, concavity_mean, perimeter_mean, radius_mean, compactness_mean, "concave points_mean", radius_se, perimeter_se, radius_worst, perimeter_worst, compactness_worst, "concave points_worst", compactness_se, "concave points_se", texture_worst, area_worst). Al eliminar estas características no solo se mejora la visualización de las curvas de aprendizaje, sino que también el problema se torna mas desafiante para resolverlos con tecnologías del estado del arte como redes neuronales profundas.
 
 
-# 200 datapoints y 3 modelos
+### 200 datapoints y 3 modelos
 
 En esta parte del laboratorio utilizaremos una cantidad de datos fija (200 datapoints) y los cuales usaremos para entrenar 3 modelos con distintos nieveles de complejidad (bajo, medio, alto). La idea de estos ejercicios es observar como el modelo utilizado se ajusta a los datos de entrenamiento.
 
-# Ejercicio 0
+# Preparación de los datos
+
+## Ejercicio 0
+
 Leer los turoriales para poder resolver este laboratorio:
 
 * [KerasenR](tutoriales/TutorialKerasenR.html)
@@ -85,16 +88,20 @@ library(magrittr)
 library(varhandle)
 ```
 
-# Ejercicio 1
+## Ejercicio 1 y 2
+
+### Consigna de ejercicio 1
 
 Cargar el dataset cáncer reducido, ubicado en "./data/breast_cancer_reduced.csv". Utilizar la función sample para extraer al azar solamente 200 datapoints (las caracteristicas de 200 nodulos). Y separar en conjunto de testeo 30% (Xtest, Ytest) y entrenamiento 70% (Xtraining, Ytraining) utilizando la técnica X (matriz de características) e Y (matriz variable objetivo). La columna diagnosis contiene la clase objetivo. Eliminar también la columna id, porque resulta irrelevante. ¿Cuantas filas y columnas tiene Xtraining e Ytraining?
 
-#Ejercicio 2
+### Consigna de ejercicio 2
 
 Modifica el tipo de dato de los conjuntos para que se adecúe al formato de keras:
 
 * X: las features deben estar contenidas en matrices, no dataframes. Esto nos limita a que todas las features sean de tipo numéricas.
 * Y: las variables de salida deben estar en formato one_hot en el caso de clasificación (para ello utilizar la función to.dummy de la librería varhandle). Ver tutorial.
+
+### Resolución
 
 ```{r}
 set.seed(1)
@@ -114,10 +121,12 @@ Xtest <- test_data %>% select(-c(diagnosis)) %>% as.matrix()
 Ytraining <- train_data %>% pull(diagnosis) %>% to.dummy("diagnosis")
 Ytest <- test_data %>% pull(diagnosis) %>% to.dummy("diagnosis")
 ```
-## 3 Modelos
+
+# 3 Modelos
+
 Utilizando el tutorial de Keras (KerasEnR.Rmd) vamos a construir varios modelos de redes profundas. Cada modelo tendrá una arquitectura de diferente complejidad. Es decir, distintas cantidad de neuronas en cada una de sus capas ocultas. A continuación, construiremos 3 redes, una llamada Modelo Pequeño, otra Modelo Básico y Modelo Grande, que tendrán una complejidad baja, media y alta respectivamente.
 
-# Ejercicio 3
+## Ejercicio 3
 
 Construir el Modelo Pequeño (smaller_model) que consta de:
 
@@ -142,14 +151,14 @@ smaller_model %>% compile(
 smaller_model %>% summary()
 ```
 
-## RESPUESTA
+### RESPUESTA
 En el resumen del modelo, la columna "Params" indica el número de parámetros entrenables en cada capa de la red neuronal. Para las capas densas (fully connected), el número de parámetros se calcula como el producto del número de unidades en la capa anterior (incluyendo el término de sesgo) y el número de unidades en la capa actual, más el término de sesgo de la capa actual.
 
 Para la primera capa densa (dense_1), hay 24 parámetros. Esto se calcula como (11 entradas + 1 sesgo) * 2 unidades = 24.Para la siguiente capa densa (dense), se obtienen 6 parámetros. Esto se debe a que la capa tiene 2 unidades y está conectada directamente con la capa anterior, que también tiene 2 unidades, más el término de sesgo, lo que resulta en 6 parámetros.
 
 La suma de los parámetros de todas las capas (24 + 6 = 30) es lo que se muestra en la parte inferior del resumen bajo "Total params".
 
-#Ejercicio 4
+## Ejercicio 4
 
 Construir el Modelo Básico (baseline_model) que consta de:
 
@@ -176,7 +185,8 @@ baseline_model %>% compile(
 baseline_model %>% summary()
 ```
 
-#Ejercicio 5
+## Ejercicio 5
+
 Construir el Modelo Grande (bigger_model) que consta de:
 
 * capa de entrada: 11 neuronas
@@ -205,7 +215,7 @@ bigger_model %>% summary()
 ## Hiperparámetros de entrenamiento
 
 Asignaremos estos valores de hiperparámetros en forma general que utilizaremos para el entrenamiento de todos nuestros modelos.
-¿Que sucede con las redes al modificar estos hiperparámetros? ¿De que forma se podrian encontrar valores adecuados?
+¿Que sucede con las redes al modificar estos hiperparámetros? ¿De qué forma se podrían encontrar valores adecuados?
 
 ```{r}
 #hiperparámetros
@@ -213,7 +223,7 @@ my_epochs = 300
 my_batch_size = 20
 ```
 
-## RESPUESTA
+### RESPUESTA
 #### Epochs (my_epochs):
 - Las épocas se refieren al número de veces que el algoritmo de aprendizaje recorre el conjunto completo de datos de entrenamiento.
 - Si aumentas el número de épocas, la red podría tener más oportunidades de ajustarse a los datos de entrenamiento, lo que podría llevar a un mejor rendimiento, pero también existe el riesgo de sobreajuste si se entrena durante demasiadas épocas.
@@ -225,7 +235,7 @@ my_batch_size = 20
 - Un tamaño de lote pequeño puede hacer que el entrenamiento sea más ruidoso, pero puede ser útil para evitar mínimos locales y mejorar la generalización.
 
 
-# Ejercicio 6
+## Ejercicio 6
 
 Realice el entrenamiento de los modelos, utilizando la función fit, los datos de entrenamiento y los de validación. Almacene el historial en distintas variables para poder graficar el error y el accuracy en { smaller_history; baseline_history; bigger_history} respectivamente.
 
@@ -236,7 +246,7 @@ smaller_history <- smaller_model %>% fit(
   epochs = my_epochs,
   batch_size = my_batch_size,
   validation_data = list(Xtest, Ytest),
-  verbose = 2
+  verbose = FALSE
 )
 
 smaller_history
@@ -249,7 +259,7 @@ baseline_history <- baseline_model %>% fit(
   epochs = my_epochs,
   batch_size = my_batch_size,
   validation_data = list(Xtest, Ytest),
-  verbose = 2
+  verbose = FALSE
 )
 
 baseline_history
@@ -262,21 +272,14 @@ bigger_history <- bigger_model %>% fit(
   epochs = my_epochs,
   batch_size = my_batch_size,
   validation_data = list(Xtest, Ytest),
-  verbose = 2
+  verbose = FALSE
 )
 
 bigger_history
-
-# El loss es el error en las pruebas del conjunto de entrenamiento
-# El val_loss lo mismo pero en el de testeo
-# Lo que buscamos en las curvas es que el loss y el val_loss bajen juntos, si hay mucha distancia entre ambas tenemos un overfitting
-
-# Accuracy: porcentaje de acerciones en el cjto de entrenamiento
-# val_accuracy: porcentaje de asercuiens de la predicciones sobre el cjto de testeo
-# En el caso de la precision lo que queremos es maximizar las curvas 
 ```
 
-# Ejercicio 7
+## Ejercicio 7
+
 Calcule la matriz de confusión para cada uno de los modelos, utilizando predict_classes() y Xtest e Ytest.
 
 ```{r}
@@ -287,10 +290,11 @@ unos <- which(Ytest==1, arr.ind = T)
 #solo nos interesan las columnas, pero van del 1 al 3, en vez del 0 al 2. Le restamos uno.
 real_output <- unos[,2] -1
 
+# Imprimir matriz de confusión
 table(real_output,predicted_output)
 # ml_test(real_output,predicted_output)
 ```
-# Ejercicio 8
+## Ejercicio 8
 
 Genere un dataframe que combine la información del proceso de entrenamiento presente en las variables smaller_history, baseline_history y bigger_history. Le recomendamos ver en el historial de KerasEnR la estructura interna de los historiales que devuelve el método fit. El dataframe debe tener las siguientes columnas.
 
@@ -309,35 +313,45 @@ history2DF <- function(data,modelName, nepochs){
   )
 }
 
-history <- bind_rows(history2DF(smaller_history, "small", 20),
-                         history2DF(baseline_history,"baseline",20),
-                         history2DF(bigger_history, "big",20)
+history <- bind_rows(history2DF(smaller_history, "small", my_epochs),
+                         history2DF(baseline_history,"baseline", my_epochs),
+                         history2DF(bigger_history, "big", my_epochs)
                          ) 
 
 history
 ```
 
-# Ejercicio 9
+## Ejercicio 9
 
 Recrear los gráficos de evolución del error y el accuracy a través de las epochs que se pueden observar en el TutorialBiasVarianza para los 3 modelos creados. Para generar los gráficos use la información presente en el dataframe historiales que se creó en el ejercicio 8. ¿Mirando estas curvas, cómo se ajusta cada modelo a los datos de entrenamiento y validación?
 
 ```{r}
 history$model <- factor(history$model, levels = c("small","baseline","big"))
 
-colors <- c("Entrenamiento" = "blue", "Prueba" = "green")
-
 ggplot(data=history, mapping=aes(x=epoch)) + 
-  geom_point(aes(y=accuracy,col="Entrenamiento")) +
-  geom_line(aes(y=accuracy,col="Entrenamiento")) +
-  geom_point(aes(y=val_accuracy,col="Prueba")) +
-  geom_line(aes(y=val_accuracy,col="Prueba")) +
+  geom_point(aes(y=accuracy), col="#091540", alpha=0.1) +
+  geom_smooth(aes(y=accuracy), col="#091540",
+              formula = y ~ x, method = "loess") +
+  geom_point(aes(y=val_accuracy),col="#B7245C", alpha=0.1) +
+  geom_smooth(aes(y=val_accuracy),col="#B7245C",
+              formula = y ~ x, method = "loess") +
   facet_wrap(~model,ncol=3) + theme(axis.text.x = element_text(angle = 60),legend.position = "bottom") +
-   labs(subtitle="Proceso de Entrenamiento de 3 modelos con diferente complejidad",y="error", x="epoch") + scale_color_manual(values = colors)
+   labs(subtitle="Proceso de Entrenamiento de 3 modelos con diferente complejidad",y="error", x="epoch")
+
+# El loss es el error en las pruebas del conjunto de entrenamiento
+# El val_loss lo mismo pero en el de testeo
+# Lo que buscamos en las curvas es que el loss y el val_loss bajen juntos, si hay mucha distancia entre ambas tenemos un overfitting
+
+# Accuracy: porcentaje de acerciones en el cjto de entrenamiento
+# val_accuracy: porcentaje de asercuiens de la predicciones sobre el cjto de testeo
+# En el caso de la precision lo que queremos es maximizar las curvas 
 ```
-## RESPUESTA 
+
+### RESPUESTA 
+
 En todos los casos, a partir de un momento dado, el error se mantiene constante por lo que el modelo se complejiza sin ninguna ganancia. En todos los casos el error es el mismo.
 
-# Ejercicio 10
+## Ejercicio 10
 
 Recrear el gráfico que analiza el error a partir de la complejidad del modelo que se puede observar en el Tutorial BiasVarianza. Para esto deberá entrenar distintos modelos con {1,2,4,8,16,32,64,128,256,512} neuronas en sus dos capas ocultas. Este ejercicio es coputacionalmente costoso y puede demorar varios minutos. ¿Observando las curvas cual sería la cantidad de neuronas óptima para este problema?
 
@@ -347,7 +361,9 @@ val_loss <- c()
 acc <- c()
 val_acc <- c()
 
-for(k in 0:9){
+K <- 0:9
+
+for(k in K){
   model <- 
     keras_model_sequential() %>%
     layer_dense(units = 2^k, activation = "relu", input_shape = 11) %>%
@@ -362,7 +378,7 @@ for(k in 0:9){
   model %>% fit(
     Xtraining,
     Ytraining,
-    epochs = my_epochs,
+    epochs = 500,
     batch_size = my_batch_size,
     validation_data = list(Xtest, Ytest),
     verbose = FALSE
@@ -375,20 +391,40 @@ for(k in 0:9){
 }
 ```
 
+```{r eval=F, include=FALSE, echo=F}
+losses <-  tibble(K=K, loss=loss, val_loss=val_loss, accuracy = acc, val_accuracy=val_acc)
+
+best <- filter(losses, val_loss == min(val_loss))
+
+ggplot(data=losses, mapping=aes(x=K)) +
+  geom_point(aes(y=loss),col="#091540") +
+  geom_smooth(aes(y=loss),col="#091540",
+              method = 'loess', formula = 'y ~ x') +
+  geom_point(aes(y=val_loss),col="#B7245C") +
+  geom_smooth(aes(y=val_loss),col="#B7245C",
+               method = 'loess', formula = 'y ~ x')  +
+  geom_line(aes(y=best$val_loss), col="#1F7A8C") +
+  geom_vline(aes(xintercept = best$K), col="#1F7A8C") +
+  labs(title="Bias vs Varianza", x="Neuronas por capa", y="Error") +
+  scale_x_continuous(labels=2^K,breaks=K)
+  
+```
+
+### RESPUESTA
+La cantidad de neuronas óptima para el problema es 256.
+
+
 # Más datos, menos datos y el modelo fijo
 
 Veremos ahora utilizando el mismo modelo, como influye la cantidad de datos en el entrenamiento.
 
 
-# Ejercicio 11
+## Ejercicio 11
 
 En este ejercicio, entrenar el modelo básico del ejercicio 4, utilizando para entrenar {20, 200, 400} datapoints. En los 3 casos utilice el dataset de testeo completo como validación. Almacenar el historial de entrenamiento de cada modelo en las variables {baseline_history_20, baseline_history_200, baseline_history_400]}.
 
-NOTA DE PABLO: Nuestro dataset actual tiene solo 200 datapoints, así que vamos a tener que releer el dataset original y recuperar 500 columnas o datapoints. Luego, tendremos que separarlo en conjuntos de entrenamiento y de testeo. Lo realizaremos de forma tal que el dataset de entrenamiento tenga 400 datapoints y el de testeo 100.
-
 ```{r}
 # Crear dataset de 500 datapoints
-
 big_data <- dataTotal[sample(nrow(dataTotal), 500), ]
 
 big_data_split <- big_data %>% initial_split(prop = 4/5)
@@ -415,14 +451,14 @@ baseline_history_20 <- baseline_model %>% fit(
   epochs = my_epochs,
   batch_size = my_batch_size,
   validation_data = list(big_Xtest, big_Ytest),
-  verbose = 1
+  verbose = FALSE
 )
 ```
 
 ```{r}
 # Obtener las posiciones de los datapoints
 indexes <- sample(0:nrow(big_Xtraining), 200)
-# Obtener dataset de entrenamiento de 20 datapoints
+# Obtener dataset de entrenamiento de 200 datapoints
 Xtraining_200 <- big_Xtraining[indexes, ]
 Ytraining_200 <- big_Ytraining[indexes, ]
 
@@ -433,14 +469,14 @@ baseline_history_200 <- baseline_model %>% fit(
   epochs = my_epochs,
   batch_size = my_batch_size,
   validation_data = list(big_Xtest, big_Ytest),
-  verbose = 1
+  verbose = FALSE
 )
 ```
 
 ```{r}
 # Obtener las posiciones de los datapoints
 indexes <- sample(0:nrow(big_Xtraining), 400)
-# Obtener dataset de entrenamiento de 20 datapoints
+# Obtener dataset de entrenamiento de 4000 datapoints
 Xtraining_400 <- big_Xtraining[indexes, ]
 Ytraining_400 <- big_Ytraining[indexes, ]                
 
@@ -451,11 +487,11 @@ baseline_history_400 <- baseline_model %>% fit(
   epochs = my_epochs,
   batch_size = my_batch_size,
   validation_data = list(big_Xtest, big_Ytest),
-  verbose = 1
+  verbose = FALSE
 )
 ```
 
-# Ejercicio 12
+## Ejercicio 12
 Genere un dataframe que combine la información del proceso de entrenamiento presente en las variables baseline_history_20, baseline_history_200 y baseline_history_400. Le recomendamos ver en el historial de KerasEnR la estructura interna de los historiales que devuelve el método fit. El dataframe debe tener las siguientes columnas.
 
 epoch | loss | accuracy | val_loss | val_accuracy | tamaño_dataset
@@ -475,16 +511,16 @@ get_history_df <- function(data, nepochs, dataset_size){
 }
 
 baseline_history_20_200_400 <- bind_rows(
-  get_history_df(baseline_history_20,  20, 20), 
-  get_history_df(baseline_history_200, 20, 200),
-  get_history_df(baseline_history_400, 20, 400)
+  get_history_df(baseline_history_20,  my_epochs, 20), 
+  get_history_df(baseline_history_200, my_epochs, 200),
+  get_history_df(baseline_history_400, my_epochs, 400)
 ) 
 
 baseline_history_20_200_400
 ```
 
-# Ejercicio 13
-Graficar la evolución del error y el accuracy a través de las epochs, de los modelos entrenados con 20, 200 y 400 datapoints, utilizando los datos almacenados en dataframe del ejercicio anterior. ¿Que se puede decir de estas curvas? ¿Siendo que la arquitectura de la red es la misma, que indican estas curvas cuando la red se entrena con distintas cantidades de datos?
+## Ejercicio 13
+Graficar la evolución del error y el accuracy a través de las epochs, de los modelos entrenados con 20, 200 y 400 datapoints, utilizando los datos almacenados en dataframe del ejercicio anterior. ¿Que se puede decir de estas curvas? ¿Siendo que la arquitectura de la red es la misma, qué indican estas curvas cuando la red se entrena con distintas cantidades de datos?
 
 ```{r}
 # set dataset size column type to factor
@@ -493,22 +529,42 @@ baseline_history_20_200_400$dataset_size <-
     baseline_history_20_200_400$dataset_size,
     levels = c(20, 200, 400))
 
-colors <- c("Entrenamiento" = "blue", "Prueba" = "green")
+# ACCURANCY
 
 ggplot(data=baseline_history_20_200_400, mapping=aes(x=epoch)) + 
-  geom_point(aes(y=accuracy,col="Entrenamiento")) +
-  geom_line(aes(y=accuracy,col="Entrenamiento")) +
-  geom_point(aes(y=val_accuracy,col="Prueba")) +
-  geom_line(aes(y=val_accuracy,col="Prueba")) +
-  facet_wrap(~dataset_size,ncol=3) + theme(axis.text.x = element_text(angle = 60),legend.position = "bottom") +
-   labs(subtitle="Proceso de Entrenamiento de 3 modelos con diferente complejidad",y="error", x="epoch") + scale_color_manual(values = colors)
+  geom_point(aes(y=accuracy), col="#091540", alpha=0.2) +
+  geom_smooth(aes(y=accuracy), col="#091540",
+              formula = y ~ x, method = "loess") +
+  geom_point(aes(y=val_accuracy),col="#B7245C", alpha=0.2) +
+  geom_smooth(aes(y=val_accuracy),col="#B7245C",
+              formula = y ~ x, method = "loess") +
+  facet_wrap(~dataset_size,ncol=3) +
+  theme(axis.text.x = element_text(angle = 60), legend.position = "bottom") +
+  labs(subtitle="Accurancy",y="accurancy", x="epoch")
+
+# LOSS
+
+ggplot(data=baseline_history_20_200_400, mapping=aes(x=epoch)) + 
+  geom_point(aes(y=loss), col="#091540", alpha=0.2) +
+  geom_smooth(aes(y=loss), col="#091540",
+              formula = y ~ x, method = "loess") +
+  geom_point(aes(y=val_loss),col="#B7245C", alpha=0.2) +
+  geom_smooth(aes(y=val_loss),col="#B7245C",
+              formula = y ~ x, method = "loess") +
+  facet_wrap(~dataset_size,ncol=3) +
+  theme(axis.text.x = element_text(angle = 60), legend.position = "bottom") +
+  labs(subtitle="Loss",y="loss", x="epoch")
 ```
 
-# Ejercicio  14
+### RESPUESTA
 
-Recrear el gráfico que muestra la convergencia de las curvas de error de entrenamiento y de testeo a medida que aumenta el tamaño del dataset de entrenamiento. Este gráifco puede observarse en la sección "Determinación de la cantidad de datos necesarios para entrenamiento" del TutorialBiasVarianza.
+Los modelos con más datapoints resultan más eficaces, pues tienen más información para desarrollar el modelo. Esto se observa en que el modelo de 400 datapoints es el que alcanza mayores valores de val_accurancy y menores de val_loss. A su vez, se observa que el modelo de más datapoints es el que más rápidamente alcanza el overfit.
 
-Para esto, deberá entrenar distintos modelos con cantidades distintas de datos N={5,10,15,20,...., 190,195,200} datapoints. En cada iteración almacene el último valor de la función de perdida tanto la de entrenamiento (loss) como la de validacion (val_loss). 
+## Ejercicio  14
+
+Recrear el gráfico que muestra la convergencia de las curvas de error de entrenamiento y de testeo a medida que aumenta el tamaño del dataset de entrenamiento. Este gráfico puede observarse en la sección "Determinación de la cantidad de datos necesarios para entrenamiento" del TutorialBiasVarianza.
+
+Para esto, deberá entrenar distintos modelos con cantidades distintas de datos N={5,10,15,20,...., 190,195,200} datapoints. En cada iteración almacene el último valor de la función de pérdida tanto la de entrenamiento (loss) como la de validacion (val_loss). 
 
 ```{r}
 library(purrr)
@@ -529,7 +585,7 @@ for (n in ndatapoints) {
   history_3 <- baseline_model %>% fit(
     x,
     y,
-    epochs = 20,
+    epochs = my_epochs,
     batch_size = as.integer(n / 5),
     callbacks = callback_early_stopping(monitor = 'val_loss',
                         min_delta = 0,
@@ -548,16 +604,20 @@ for (n in ndatapoints) {
 ```{r eval=FALSE, include=FALSE}
 losses <- tibble(N=ndatapoints, loss=loss, val_loss=val_loss)
 
-p20 <- ggplot(data=losses, mapping=aes(x=N)) +
+ggplot(data=losses, mapping=aes(x=N)) +
   geom_point(aes(y=loss),col="blue") +
-  geom_smooth(aes(y=loss),col="blue") +
+  geom_smooth(aes(y=loss),col="blue",
+              method = 'loess', formula = 'y ~ x') +
   geom_point(aes(y=val_loss),col="green") +
-  geom_smooth(aes(y=val_loss),col="green") 
+  geom_smooth(aes(y=val_loss),col="green",
+              method = 'loess', formula = 'y ~ x') +
+  labs(title = "Evolución de la pérdida según número de datapoints",
+       x = "número de datapoints", y = "pérdida")
 ```
 
 # Regularización
 
-# Ejercicio 15
+## Ejercicio 15
 
 Aplicar sobre el modelo grande del ejercicio 5 las técnicas de prevención del overfitting presentadas en el TutorialBiasVarianza (Regularización de pesos, Dropout y EarlyStopping). Comparar la evolución del error y el accuracy a través de las epochs de los cuatro modelos lado a lado. ¿Que se puede decir de estas curvas? ¿y de los modelos?
 
@@ -594,7 +654,7 @@ optimized_history <- optimized_model %>% fit(
 )
 ```
 
-# Ejercicio 16
+## Ejercicio 16
 
 Calular las matrices de confusión de los modelos del ejercicio anterior y calcule alguna medida de rendimiento.
 
